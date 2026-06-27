@@ -1,0 +1,25 @@
+[project]
+name = "argos"
+version = "0.1.0"
+requires-python = ">=3.13"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "D",   # pydocstyle
+    "I",   # isort
+    "UP"   # pyupgrade
+]
+ignore = []
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
