@@ -371,6 +371,91 @@ Safety-critical and irreversible actions continue to require explicit confirmati
 
 ---
 
+# EDR-008
+
+## Public Facade Pattern (Implementation EDR-001)
+
+**Date:** 27 June 2026
+
+### Context
+
+To prevent coupling and circular dependencies between subsystem internals and external callers, subsystems must establish clear, high-level interfaces that encapsulate internal implementation logic.
+
+### Decision
+
+Every ARGOS subsystem must expose exactly one public facade class (e.g., `InputProcessor` for input, `IntentAnalyzer` for intent) as the exclusive orchestration and entry point. Helper workers and internal pipeline stages (e.g., normalizers, parsers, classifiers, extractors) must remain encapsulated within the package and hidden from external namespace exports in `__init__.py`.
+
+### Consequences
+
+* **Encapsulation**: Callers only import the facade and DTO container models, insulating them from internal refactoring.
+* **Typing Safety**: Simplifies class references at subsystem boundaries.
+* **Testing Modularity**: Facade orchestrators can be instantiated with mocked versions of internal dependencies for isolated testing.
+
+---
+
+# EDR-009
+
+## Separation of Confidence Evaluation and Intent Classification (Implementation EDR-002)
+
+**Date:** 28 June 2026
+
+### Context
+
+Originally, the classifier (`RuleEngine`) was slated to perform both category mapping and confidence calculations. This coupled pattern matching with mathematical estimation, violating the Single Responsibility Principle.
+
+### Decision
+
+Create an independent, stateless `ConfidenceEvaluator` component. The `RuleEngine` is responsible solely for determining primary and alternative intents. The `ConfidenceEvaluator` calculates the numeric confidence score (0.0 to 1.0) based on intent validity, ambiguities, and entity counts.
+
+### Consequences
+
+* **Independent Testing**: The mathematical calculations and confidence bounds can be unit tested in isolation using mocked intent and entity values.
+* **Flexibility**: The confidence scoring heuristic can be easily tuned, modified, or replaced by ML probability scoring without impacting pattern rules.
+
+---
+
+# EDR-010
+
+## Multiple Extracted Entities Support (Implementation EDR-003)
+
+**Date:** 28 June 2026
+
+### Context
+
+User requests can reference multiple instances of a single parameter category within one command (e.g. *"Open chrome and vscode"* or *"Copy doc1.txt and doc2.txt"*). Storing entities as single strings would prevent batch operations.
+
+### Decision
+
+Define the `entities` field in `IntentResult` as `dict[str, list[str]]` instead of a plain `dict[str, str]`. The `EntityExtractor` must group all parsed targets by category as arrays, deduplicating and sorting matches.
+
+### Consequences
+
+* **Batch Execution**: Downstream executing agents can iterate over array arguments for parallel file or application tasks.
+* **Deterministic Telemetry**: Deduplicating and sorting entity lists guarantees that identical raw inputs produce identical, predictable `IntentResult` objects.
+
+---
+
+# EDR-011
+
+## Architecture-First Specification Workflow (Implementation EDR-004)
+
+**Date:** 28 June 2026
+
+### Context
+
+In early stages, code implementations started before design details were frozen, leading to structural refactoring and changes during execution (e.g., changing exception classes mid-way).
+
+### Decision
+
+Establish a mandatory development lifecycle requiring the generation, review, and freezing of an Architecture Design Specification (ADS) *before* writing any subsystem production code.
+
+### Consequences
+
+* **Reduced Refactoring**: Structural changes are debated in the blueprint phase, preventing wasted effort.
+* **Stable Contracts**: Subsystem public interfaces, constants, and exceptions are established upfront, enabling parallel work on test suites and other layers.
+
+---
+
 # Founder's Pact
 
 **Date:** 26 June 2026

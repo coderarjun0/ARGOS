@@ -132,6 +132,37 @@ This milestone transformed ARGOS from a concept into a structured Cognitive Oper
 
 ---
 
+# Version v0.1.0-alpha — Framework Implementations
+
+**Release Date:** 28 June 2026
+
+## Overview
+
+First functional codebase release of ARGOS implementing the fundamental parsing framework. This release contains the production code for the Input Processing and Intent Analysis layers.
+
+## Added
+
+### ADS-001 — Input Processing Subsystem
+
+* **InputProcessor**: Public facade coordinating the validation and parsing pipeline.
+* **Normalizer**: Trims input, standardizes whitespace, and lowercases text.
+* **Tokenizer**: Splits normalized text into word tokens on space boundaries.
+* **Parser**: Maps processed data into final parsed requests.
+* **Public API Boundary**: Encapsulates internal helpers, exporting only `InputProcessor`, `InputRequest`, `ParsedRequest`, and exceptions via package `__init__.py`.
+* **100% Statement Coverage**: Comprehensive test suite consisting of 14 unit tests covering type safety, UTF-8 checks, and bounds validations.
+
+### ADS-002 — Intent Analysis Subsystem
+
+* **IntentAnalyzer**: Public facade class orchestrating semantic intent classification.
+* **RuleEngine**: Matches keyword rules and patterns to determine primary intent and candidate alternatives.
+* **EntityExtractor**: Parses normalized text and lists entities (application, file, folder, website, url, person, date, time, command).
+* **ConfidenceEvaluator**: Estimates classification confidence scores using deterministic heuristic weighting.
+* **IntentResult**: Output model storing intent, alternatives, confidence, and engine telemetry.
+* **Public API Boundary**: Exports only facade, result models, enums, and exceptions, encapsulating rule engines and extractors.
+* **100% Statement Coverage**: Comprehensive test suite of 21 tests covering clamping bounds, mock injections, and log privacy boundaries.
+
+---
+
 # Upcoming Releases
 
 ## Version 0.3.0 — Framework
