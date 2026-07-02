@@ -207,23 +207,48 @@ For ADS-001, we designed the modules but refined exceptions and facade structure
 
 ---
 
+# Session 3 — Planning Subsystem (ADS-003)
+
+**Date:** 2 July 2026
+
+## Objective
+
+Implement the `planning` subsystem (ADS-003) to map user intents into ordered recipe steps.
+
+## Completed
+
+* Set up the package structure under `src/argos/planning/`.
+* Implemented the abstract base class `Strategy` for planning logic.
+* Developed `DefaultStrategy` to map intents (app open/close, files, search, commands) directly to plan steps.
+* Developed `FallbackStrategy` to schedule clarification steps when intents are ambiguous.
+* Implemented the public orchestrator `Planner` facade supporting threshold checks and dependency injection of strategies.
+* Integrated confirmation checks (`requires_confirmation` flag) and sequence identifiers (`step_id`).
+* Created a test suite of 26 tests in `tests/test_planning.py`, achieving **100% statement coverage** across the planning subsystem files.
+
+## Architectural Lessons Learned
+
+* **ABC Strategy Isolation**: Relying on an Abstract Base Class (ABC) for strategy contracts makes it trivial to swap rule-based planning for neural-net planners without changing the public facade.
+* **Separating Execution State**: Keeping the execution status out of the DTO steps preserves the planning layer as a pure recipe builder, leaving runner logic entirely to the execution layer.
+
+---
+
 # Current Status
 
 Current Phase:
 
 ✅ Foundation Complete
 ✅ Architecture Phase Complete
-✅ Module Specifications Complete (ADS-001, ADS-002)
-✅ Implementation Complete (v0.1.0-alpha)
-✅ Testing Complete (35 tests, 100% coverage)
+✅ Module Specifications Complete (ADS-001, ADS-002, ADS-003)
+✅ Implementation Complete (v0.3.0-alpha)
+✅ Testing Complete (61 tests, 100% coverage)
 ✅ Integration Complete
 
 ---
 
 # Subsystem Metrics
 
-* **Engineering Decisions (EDRs):** 11 (7 blueprint, 4 implementation)
-* **Lines of Production Code:** ~250
-* **Total Unit Tests:** 35
+* **Engineering Decisions (EDRs):** 15 (7 blueprint, 8 implementation)
+* **Lines of Production Code:** ~400
+* **Total Unit Tests:** 61
 * **Subsystem Code Coverage:** 100%
 * **Technical Debt Introduced:** 0 (Known)

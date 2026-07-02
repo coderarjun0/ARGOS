@@ -456,6 +456,93 @@ Establish a mandatory development lifecycle requiring the generation, review, an
 
 ---
 
+# EDR-012
+
+## Public Planner Facade
+
+**Date:** 2 July 2026
+
+### Context
+
+Similar to previous subsystems, planning orchestration details, thresholds, and internal helpers must not be directly accessed by downstream components to avoid compile-time coupling.
+
+### Decision
+
+Establish the `Planner` class as the sole public facade of the planning subsystem. All execution recipe strategies and validations are orchestrated inside the facade. The package exports only `Planner`, `Plan`, `PlanStep`, `Action`, and base exceptions in `__init__.py`.
+
+### Consequences
+
+* **Boundary Separation**: Downstream layers (like the Brain Core) interact only with the `Planner.plan()` method.
+* **Refactoring Independence**: Strategy patterns and validation formulas can be refactored privately without affecting callers.
+
+---
+
+# EDR-013
+
+## Strategy-Based Planning Architecture
+
+**Date:** 2 July 2026
+
+### Context
+
+Different planning techniques (e.g., rule-based heuristic generation, machine learning execution mappings, LLM prompts) should be swap-compatible without changing the main orchestrator flow.
+
+### Decision
+
+Implement planning strategies using a stateless Strategy Pattern backed by an Abstract Base Class (`Strategy(ABC)`). The `Planner` selects the active strategy (such as `DefaultStrategy` or `FallbackStrategy`) and delegates plan steps generation to its abstract method `build_steps()`.
+
+### Consequences
+
+* **Subsystem Extensibility**: Third-party developers can write custom strategies by subclassing `Strategy` and injecting them into the `Planner` constructor.
+* **Isolated Testing**: Mocks of the Strategy interface can be injected in tests to isolate the facade's exception handling and validation pipeline.
+
+---
+
+# EDR-014
+
+## Separation of Planning from Execution
+
+**Date:** 2 July 2026
+
+### Context
+
+Execution state (such as progress indicators, step execution statuses, retry counts) is dynamic and OS-dependent. Mixing it with recipe generation violates the Single Responsibility Principle.
+
+### Decision
+
+Decouple execution state completely from the Planning subsystem. `Plan` and `PlanStep` remain pure data transfer objects representing *instructions* rather than progress. Running and tracking actions is delegated to the future Execution subsystem.
+
+### Consequences
+
+* **Subsystem Purity**: The Planner remains stateless and deterministic.
+* **Model Lightness**: Dataclass slots prevent dynamic runtime footprint bloat, keeping recipes lightweight and serializable.
+
+---
+
+# EDR-015
+
+## Confidence-Driven Planning Paths
+
+**Date:** 2 July 2026
+
+### Context
+
+Subsystems must fail safely when the parser is unsure of intent, and require user permission for risky actions that fall in low-confidence ranges.
+
+### Decision
+
+Implement three execution paths in `Planner` based on the parsed request confidence:
+1. **Normal Path (Confidence >= 0.80)**: Builds steps directly, with `requires_confirmation = False`.
+2. **Confirmation Path (0.60 <= Confidence < 0.80)**: Builds steps directly, but flags `requires_confirmation = True` to mandate user consent.
+3. **Clarification Path (Confidence < 0.60 or UNKNOWN intent)**: Invokes `FallbackStrategy` to schedule a single `Action.ASK_CLARIFICATION` step.
+
+### Consequences
+
+* **Safe Degradation**: Prevents dangerous execution on ambiguous text commands.
+* **Interactivity**: Clean signaling allows downstream executors to cleanly prompt user approval.
+
+---
+
 # Founder's Pact
 
 **Date:** 26 June 2026

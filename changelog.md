@@ -163,20 +163,31 @@ First functional codebase release of ARGOS implementing the fundamental parsing 
 
 ---
 
-# Upcoming Releases
+# Version v0.3.0-alpha — Planning Layer
 
-## Version 0.3.0 — Framework
+**Release Date:** 2 July 2026
 
-**Planned**
+## Overview
 
-- ARGOS Design Specification (ADS) framework
-- ADS-001: Voice System
-- ADS-002: Brain Core
-- ADS-003: Memory System
-- MVP Definition
-- Engineering Workflow
+Second codebase release of ARGOS implementing the Planning Layer subsystem (ADS-003). This subsystem parses user intent results into structured, ordered recipe steps ready for execution.
+
+## Added
+
+### ADS-003 — Planning Layer Subsystem
+
+* **Planner**: Public facade coordinating type-validation, strategy selection based on confidence levels, and plan compilation.
+* **Strategy Architecture**: Stateless Strategy abstract base class with concrete mappings:
+  * **DefaultStrategy**: Maps standard intents and extracted entities directly to execution step parameters.
+  * **FallbackStrategy**: Handles low-confidence or unknown intents by generating user clarification steps.
+* **Plan**: Dataclass representing the final recipe container, including step list, telemetry tags, and verification flags.
+* **PlanStep**: Dataclass representing a single action step containing sequence IDs and parameters. Extraneous execution state is decoupled.
+* **Action StrEnum**: Definition of atomic commands (open, close, read, write, create, delete, web search, command run, and clarification).
+* **26 Unit Tests**: Verifying DTO encapsulation, confirmation bounds, mock-based strategy injection, and logging privacy.
+* **100% Statement Coverage**: Zero statement coverage gaps across the entire package.
 
 ---
+
+# Upcoming Releases
 
 ## Version 0.4.0 — Awakening
 
