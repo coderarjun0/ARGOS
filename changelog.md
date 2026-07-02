@@ -187,18 +187,47 @@ Second codebase release of ARGOS implementing the Planning Layer subsystem (ADS-
 
 ---
 
+# Version v0.4.0-alpha — Execution Layer
+
+**Release Date:** 2 July 2026
+
+## Overview
+
+Third codebase release of ARGOS implementing the Execution Layer subsystem (ADS-004). This subsystem orchestrates step execution, routes commands to their respective mock executors, and aggregates outcome results.
+
+## Added
+
+### ADS-004 — Execution Subsystem
+
+* **ExecutionEngine**: Public facade class orchestrating plan validations, steps limits verification, sequential execution, and compilation routing.
+* **ActionRouter**: Registry-based routing table mapping action type enums directly to executors, supporting runtime registration for dynamic extensions.
+* **ActionExecutor**: Abstract base class (`ActionExecutor(ABC)`) defining the standard execution protocol interface.
+* **Concrete ActionExecutor Implementations**:
+  * **ApplicationExecutor**: Simulated execution for opening and closing applications.
+  * **FileExecutor**: Simulated execution for file creation, reading, writing, and deletion.
+  * **WebExecutor**: Simulated execution for web search tasks.
+  * **SystemExecutor**: Simulated execution for running system CLI terminal commands.
+* **ExecutionAggregator**: Stateless aggregator compiling step-level results into overall statuses.
+* **ExecutionStatus**: StrEnum representing overall plan outcomes (`SUCCESS`, `PARTIAL_SUCCESS`, `FAILED`).
+* **DTO Models**:
+  * **ExecutionResult**: Stores final compiled outcomes, step result lists, engine ID, and metadata.
+  * **StepResult**: Stores execution success state, step ID, action type, and verification details.
+* **25 Unit Tests**: Verifying DTO slot boundary safety, registry routing, execution status aggregation, message truncation, logging safety, and exception translation.
+* **100% Code Coverage**: Comprehensive test coverage across all execution package modules.
+
+---
+
 # Upcoming Releases
 
-## Version 0.4.0 — Awakening
+## Version 0.5.0 — Foundation
 
 **Planned**
 
-- First functional prototype
-- Voice interaction
-- Text interaction
-- Basic memory
-- Simple computer automation
-- Local execution
+- Stable core platform
+- Modular plugin architecture
+- Robust scheduling
+- Improved reliability
+- Core feature completion
 
 ---
 

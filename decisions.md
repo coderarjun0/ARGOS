@@ -543,6 +543,111 @@ Implement three execution paths in `Planner` based on the parsed request confide
 
 ---
 
+# EDR-016
+
+## Execution Aggregator Pattern
+
+**Date:** 2 July 2026
+
+### Context
+
+Coordinating the step-by-step execution pipeline and compiling individual step outcomes into a final status DTO are separate responsibilities. Combining them inside the orchestrator engine violates the Single Responsibility Principle.
+
+### Decision
+
+Introduce a stateless `ExecutionAggregator` component. The `ExecutionEngine` is responsible exclusively for plan validation, orchestration, and sequential routing of step runs. The `ExecutionAggregator` receives the list of completed `StepResult` objects and compiles the final aggregated status.
+
+### Consequences
+
+* **Orchestrator Simplicity**: Keeps `ExecutionEngine` clean of result math and outcome logic.
+* **Granular Assertions**: Aggregator logic can be unit tested in isolation with mock step success vectors.
+
+---
+
+# EDR-017
+
+## Registry-Based Action Router
+
+**Date:** 2 July 2026
+
+### Context
+
+Hardcoding execution routing tables using `if/elif` or `match` blocks inside the engine facade creates tightly coupled dependencies and prevents dynamic subsystem extensions.
+
+### Decision
+
+Implement the `ActionRouter` utilizing a registry mapping model. Executors must subclass the standard `ActionExecutor` interface and register themselves via `ActionRouter.register(action, executor)`. The router performs resolution using an internal dictionary rather than conditional logic.
+
+### Consequences
+
+* **Clean Routing**: Completely eliminates branching structures inside the engine orchestrator.
+* **Plugin Extensibility**: Enables registering custom executors dynamically at runtime.
+
+---
+
+# EDR-018
+
+## Execution Status Enumeration
+
+**Date:** 2 July 2026
+
+### Context
+
+Plan executions can succeed partially, where some steps complete but others fail. Representing outcomes with a binary boolean success flag prevents granular execution reporting.
+
+### Decision
+
+Introduce the `ExecutionStatus` StrEnum containing values: `SUCCESS` (all steps succeeded), `FAILED` (all steps failed), and `PARTIAL_SUCCESS` (mixed step results). `ExecutionResult` exposes a `status` field utilizing this enum.
+
+### Consequences
+
+* **Rich Reporting**: Downstream cognitive layers can identify exactly when a multi-step command fails partially and trigger targeted retries or compensation actions.
+* **Predictable outcome DTO**: Simplifies diagnostic checks for downstream planners.
+
+---
+
+# EDR-019
+
+## Mock Execution First Strategy
+
+**Date:** 2 July 2026
+
+### Context
+
+Accessing actual OS commands, filesystems, and networks during the early development stages presents security risks, makes pipeline states unstable, and introduces non-deterministic environment dependencies.
+
+### Decision
+
+Restrict Version 1 of the Execution subsystem to simulated mock runs only. No system calls or filesystem modifications are permitted. Concrete executors return deterministic `StepResult` objects simulating completion details based on parameter checks.
+
+### Consequences
+
+* **Perfect Testability**: Automated unit tests execute instantly in any environment with zero side effects.
+* **Platform Security**: Core execution routing logic is finalized and reviewed before introducing dangerous OS permissions.
+
+---
+
+# EDR-020
+
+## Execution Plugin Architecture
+
+**Date:** 2 July 2026
+
+### Context
+
+Adding new capabilities (e.g. running browser automation, database queries, container operations) should not require refactoring the core execution engine code.
+
+### Decision
+
+Establish the subsystem around the `ActionExecutor` interface and the registry-based `ActionRouter`. Developers add capabilities by subclassing `ActionExecutor` and calling `ActionRouter.register()` with the new `Action` type.
+
+### Consequences
+
+* **Open-Closed Principle**: Core execution engine classes are closed to modifications but open to dynamic capability expansions.
+* **Plugin Isolation**: Third-party plugins remain completely isolated in their execution modules, minimizing regression risks.
+
+---
+
 # Founder's Pact
 
 **Date:** 26 June 2026
