@@ -258,23 +258,53 @@ Design and implement the `execution` subsystem (ADS-004) to sequentially execute
 
 ---
 
+# Session 5 — Brain Core Subsystem (ADS-005)
+
+**Date:** 2 July 2026
+
+## Objective
+
+Design, implement, and fully test the `brain` subsystem according to the frozen ADS-005 v1.2 specification, elevating ARGOS from a sequential pipeline to an active Cognitive Operating System.
+
+## Completed
+
+* Created package structure under `src/argos/brain/`.
+* Implemented `BrainCore` as the public facade and cognitive lifecycle orchestrator.
+* Established explicit cognitive states via `CognitiveState` (`IDLE`, `PERCEIVING`, `INTERPRETING`, `REASONING`, `PLANNING`, `EXECUTING`, `EVALUATING`, `WAITING_FOR_USER`, `COMPLETED`, `FAILED`, `TERMINATED`) and public `BrainStatus`.
+* Implemented transient `WorkingMemory` with slots, contextual variables, decision histories, and reset mechanics.
+* Implemented `GoalManager` coordinating goal creation, active tracking, prioritization, completion, and cancellation.
+* Implemented deterministic `DecisionEngine` evaluating working memory to select capabilities, clarify ambiguous intents, enforce user confirmations, and determine loop termination.
+* Implemented `CapabilityManager` with `CognitiveCapability(ABC)` and standard adapters for Input (`ADS-001`), Intent (`ADS-002`), Planning (`ADS-003`), and Execution (`ADS-004`), wrapping subsystem exceptions into `ProcessingError`.
+* Implemented `Observer` tracking capability outputs and signaling discrepancies when execution status deviates.
+* Enforced strict public API encapsulation exporting only `BrainCore`, `BrainResult`, `BrainStatus`, `BrainError`, `ValidationError`, and `ProcessingError` via `__init__.py`.
+* Created comprehensive test suite in `tests/test_brain.py` with 29 tests covering lifecycle paths, slot immutability, boundary encapsulation, infinite loop safeguards, and error wrapping.
+* Maintained **100% statement coverage** across all 1190 statements in `src/argos/`.
+
+## Architectural Lessons Learned
+
+* **Brain as Lifecycle Owner**: Keeping `BrainCore` as the sole coordinator of the cognitive loop while delegating evaluative questions to `DecisionEngine` completely prevents God-class bloat while maintaining clear ownership boundaries.
+* **Pluggable Cognitive Capabilities**: Treating lower-level subsystems as capabilities registered with `CapabilityManager` rather than components of the Brain itself decouples cognition from mechanical details.
+* **Observation Closes the Loop**: Introducing the `Observer` component ensures that execution results feed back into Working Memory, enabling meaningful evaluation rather than ending cognition at execution.
+
+---
+
 # Current Status
 
 Current Phase:
 
 ✅ Foundation Complete
 ✅ Architecture Phase Complete
-✅ Module Specifications Complete (ADS-001, ADS-002, ADS-003, ADS-004)
-✅ Implementation Complete (v0.4.0-alpha)
-✅ Testing Complete (85 tests, 100% coverage)
+✅ Module Specifications Complete (ADS-001, ADS-002, ADS-003, ADS-004, ADS-005)
+✅ Implementation Complete (v0.5.0-alpha)
+✅ Testing Complete (114 tests, 100% coverage)
 ✅ Integration Complete
 
 ---
 
 # Subsystem Metrics
 
-* **Engineering Decisions (EDRs):** 20 (7 blueprint, 13 implementation)
-* **Lines of Production Code:** ~650
-* **Total Unit Tests:** 85
+* **Engineering Decisions (EDRs):** 23 (7 blueprint, 16 implementation)
+* **Lines of Production Code:** ~1,190 statements
+* **Total Unit Tests:** 114
 * **Subsystem Code Coverage:** 100%
 * **Technical Debt Introduced:** 0 (Known)

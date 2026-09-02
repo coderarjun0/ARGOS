@@ -648,6 +648,69 @@ Establish the subsystem around the `ActionExecutor` interface and the registry-b
 
 ---
 
+# EDR-021
+
+## Cognitive Lifecycle & Single State Model
+
+**Date:** 2 July 2026
+
+### Context
+
+Transforming ARGOS from a linear request-response processing pipeline into an active Cognitive Operating System requires an explicit lifecycle model. Mixing execution state with cognitive reasoning phases causes ambiguity in session telemetry.
+
+### Decision
+
+Model the Brain Core around an explicit Cognitive Loop: `Perceive` -> `Understand` -> `Reason` -> `Decide` -> `Act` -> `Observe` -> `Reflect` -> `Terminate/Repeat`. Internal cognitive phases are explicitly tracked via `CognitiveState` (`IDLE`, `PERCEIVING`, `INTERPRETING`, `REASONING`, `PLANNING`, `EXECUTING`, `EVALUATING`, `WAITING_FOR_USER`, `COMPLETED`, `FAILED`, `TERMINATED`). Public session outcomes are summarized by `BrainStatus`.
+
+### Consequences
+
+* **Unambiguous Cognition**: Downstream telemetry can observe exactly which cognitive stage the Brain occupies at any moment.
+* **Separation of Concerns**: High-level cognitive state is cleanly separated from low-level execution step progress.
+
+---
+
+# EDR-022
+
+## Pluggable Cognitive Capabilities
+
+**Date:** 2 July 2026
+
+### Context
+
+Hardcoding lower-level subsystem interactions (input processing, intent parsing, planning, execution) inside the Brain Core tightly couples cognition to mechanical details and violates the Open-Closed Principle.
+
+### Decision
+
+Treat existing and future subsystems as pluggable `CognitiveCapability` instances managed by a `CapabilityManager`. Standard adapters wrap `InputProcessor`, `IntentAnalyzer`, `Planner`, and `ExecutionEngine` without modifying their public contracts. Subsystem exceptions are intercepted and wrapped into `ProcessingError` at the capability boundary.
+
+### Consequences
+
+* **Decoupled Architecture**: Subsystems can be swapped, mocked, or upgraded to neural providers without altering the Brain Core reasoning loop.
+* **Boundary Integrity**: Low-level exceptions do not leak across capability boundaries.
+
+---
+
+# EDR-023
+
+## Transient Working Memory & Lightweight Observation Feedback
+
+**Date:** 2 July 2026
+
+### Context
+
+The Brain Core requires short-term context during loop iterations without depending on persistent long-term storage or vector databases. Furthermore, cognition must not terminate immediately upon action execution without observing outcomes.
+
+### Decision
+
+Introduce a transient `WorkingMemory` container owned by the Brain for intra-session state (goals, parameters, intermediate DTOs, decision logs) that resets between requests. Pair it with a lightweight `Observer` that receives capability outputs, updates working memory, and signals discrepancies (e.g. execution failures or partial completions) back to the reasoning loop.
+
+### Consequences
+
+* **Zero Memory Leakage**: Transient context remains lightweight and cleanly scoped to individual sessions.
+* **Closed Cognitive Loop**: Observation and reflection allow the Brain to evaluate actual vs. expected results rather than operating blindly.
+
+---
+
 # Founder's Pact
 
 **Date:** 26 June 2026

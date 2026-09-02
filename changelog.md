@@ -217,6 +217,31 @@ Third codebase release of ARGOS implementing the Execution Layer subsystem (ADS-
 
 ---
 
+# Version v0.5.0-alpha — Brain Core Subsystem
+
+**Release Date:** 2 July 2026
+
+## Overview
+
+Fourth functional codebase release of ARGOS implementing the central cognitive hub (ADS-005). This release transforms ARGOS from a sequential processing pipeline into an active Cognitive Operating System driven by an explicit cognitive loop.
+
+## Added
+
+### ADS-005 — Brain Core Subsystem
+
+* **BrainCore**: Public facade orchestrating the cognitive reasoning loop (`Perceive` -> `Understand` -> `Reason` -> `Decide` -> `Act` -> `Observe` -> `Reflect` -> `Terminate/Repeat`).
+* **CognitiveState & BrainStatus**: Explicit StrEnums distinguishing transient internal cognitive phases from coarse session lifecycle outcomes.
+* **WorkingMemory**: Transient cognitive state container managing active goals, intermediate DTOs, decision histories, and short-term context.
+* **GoalManager**: Dedicated goal lifecycle coordinator supporting creation, prioritization, retrieval, completion, and cancellation.
+* **DecisionEngine**: Pure reasoning component evaluating working memory to determine capability transitions, clarification needs, and user confirmation bounds.
+* **CapabilityManager & Adapters**: Pluggable registry treating Input, Intent, Planning, and Execution subsystems as cognitive capabilities, intercepting subsystem errors and wrapping them at the capability boundary.
+* **Observer**: Lightweight feedback tracker updating working memory and signaling discrepancies when execution deviates from expectations.
+* **BrainResult**: DTO container compiled at loop termination, aggregating telemetry, decisions, and execution outcomes with `slots=True`.
+* **29 Unit Tests**: Bringing the full repository suite to 114 tests.
+* **100% Statement Coverage**: Preserving zero statement coverage gaps across all 1190 statements in `src/argos/`.
+
+---
+
 # Upcoming Releases
 
 ## Version 0.5.0 — Foundation
