@@ -101,6 +101,16 @@ class DecisionEngine:
         if working_memory.intent_result is None:
             return CAPABILITY_INTENT
 
+        # Check if a non-pipeline capability execution is requested in working memory
+        pending_cap = working_memory.get_context("pending_capability")
+        if (
+            pending_cap
+            and isinstance(pending_cap, str)
+            and pending_cap.strip()
+            and not working_memory.get_context("pending_capability_executed")
+        ):
+            return pending_cap.strip()
+
         if working_memory.plan is None:
             return CAPABILITY_PLANNING
 

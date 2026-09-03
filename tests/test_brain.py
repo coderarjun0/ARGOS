@@ -5,6 +5,7 @@ subsystem integration, capability wrapping, exception handling, and encapsulatio
 """
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -33,6 +34,7 @@ from argos.brain.capability_manager import (
     create_default_capability_manager,
 )
 from argos.brain.constants import (
+    CAPABILITY_MEMORY,
     CLARIFICATION_CONFIDENCE_THRESHOLD,
     CONFIRMATION_CONFIDENCE_THRESHOLD,
     DEFAULT_BRAIN_ENGINE,
@@ -332,7 +334,8 @@ def test_capability_adapters_and_manager() -> None:
     assert mgr.has(CAPABILITY_INTENT)
     assert mgr.has(CAPABILITY_PLANNING)
     assert mgr.has(CAPABILITY_EXECUTION)
-    assert len(mgr.list_capabilities()) == 4
+    assert mgr.has(CAPABILITY_MEMORY)
+    assert len(mgr.list_capabilities()) == 5
 
     # Direct execution through adapters
     input_req = InputRequest(
@@ -860,4 +863,355 @@ def test_brain_core_terminated_status_transition() -> None:
     brain = BrainCore(decision_engine=TerminatedDecisionEngine())
     res = brain.process("open notepad")
     assert res.brain_status == BrainStatus.TERMINATED
+
+
+# =====================================================================
+# Milestone 6: MemoryCapability & Brain Integration Tests
+# =====================================================================
+
+
+def test_default_capability_manager_has_memory_capability() -> None:
+    """Verifies that create_default_capability_manager includes MemoryCapability."""
+    from argos.brain.constants import CAPABILITY_MEMORY
+
+    mgr = create_default_capability_manager()
+    assert mgr.has(CAPABILITY_MEMORY)
+    assert CAPABILITY_MEMORY == "memory"
+    assert len(mgr.list_capabilities()) == 5
+
+
+def test_capability_manager_memory_error_wrapping() -> None:
+    """Verifies capability manager translates MemoryError into ProcessingError."""
+    from argos.memory.exceptions import MemoryStorageError
+
+    mgr = CapabilityManager()
+
+    class StorageFailingCap(CognitiveCapability):
+        @property
+        def name(self) -> str:
+            return "failing_storage"
+
+        def execute(self, *args: object, **kwargs: object) -> None:
+            raise MemoryStorageError("Database corrupted")
+
+    mgr.register(StorageFailingCap())
+    with pytest.raises(ProcessingError, match="subsystem error"):
+        mgr.execute("failing_storage")
+
+
+def test_brain_core_memory_retrieval_and_session_turn_recording() -> None:
+    """Verifies BrainCore session turn recording and recall via CAPABILITY_MEMORY."""
+    from argos.memory import MemoryEngine
+
+    mem_engine = MemoryEngine(db_path=":memory:")
+    brain = BrainCore(
+        capability_manager=create_default_capability_manager(
+            memory_engine=mem_engine
+        )
+    )
+
+    res1 = brain.process("open notepad")
+    assert res1.brain_status == BrainStatus.COMPLETED
+
+    res2 = brain.process("open calculator")
+    assert res2.brain_status == BrainStatus.COMPLETED
+
+    assert mem_engine.get_turn_count("default") == 2
+    turns = mem_engine.get_session_turns("default")
+    assert len(turns) == 2
+    assert turns[0].user_input == "open notepad"
+    assert turns[1].user_input == "open calculator"
+
+
+def test_brain_core_persistent_memory_mutation_waiting_for_user() -> None:
+    """Verifies memory mutation without consent triggers WAITING_FOR_USER."""
+    from argos.memory import MemoryEngine
+
+    mem_engine = MemoryEngine(db_path=":memory:")
+    brain = BrainCore(
+        capability_manager=create_default_capability_manager(
+            memory_engine=mem_engine
+        )
+    )
+
+    ctx = {
+        "pending_memory_mutation": {
+            "category": "pref",
+            "key": "editor",
+            "value": "vscode",
+        }
+    }
+    res = brain.process("open notepad", context=ctx)
+    assert res.brain_status == BrainStatus.WAITING_FOR_USER
+    assert any("consent" in d.lower() for d in res.decision_history)
+    assert mem_engine.get_exact("pref", "editor") is None
+
+
+def test_brain_core_persistent_memory_mutation_consent_granted() -> None:
+    """Verifies memory mutation executes when explicit consent is provided."""
+    from argos.memory import MemoryEngine
+
+    mem_engine = MemoryEngine(db_path=":memory:")
+    brain = BrainCore(
+        capability_manager=create_default_capability_manager(
+            memory_engine=mem_engine
+        )
+    )
+    auth = mem_engine.grant_explicit_consent(details="User confirmed")
+
+    ctx = {
+        "pending_memory_mutation": {
+            "category": "pref",
+            "key": "editor",
+            "value": "vscode",
+            "operation": "store_persistent",
+        }
+    }
+
+    res = brain.process("open notepad", authorization=auth, context=ctx)
+    assert res.brain_status == BrainStatus.COMPLETED
+    rec = mem_engine.get_exact("pref", "editor")
+    assert rec is not None
+    assert rec.value == "vscode"
+
+
+def test_brain_core_persistent_memory_mutation_consent_denied() -> None:
+    """Verifies persistent memory mutation is aborted cleanly when consent is denied."""
+    from argos.memory import MemoryEngine
+
+    mem_engine = MemoryEngine(db_path=":memory:")
+    brain = BrainCore(
+        capability_manager=create_default_capability_manager(
+            memory_engine=mem_engine
+        )
+    )
+    denied_auth = mem_engine.deny_consent()
+
+    ctx = {
+        "pending_memory_mutation": {
+            "category": "pref",
+            "key": "editor",
+            "value": "vscode",
+        }
+    }
+
+    res = brain.process("open notepad", authorization=denied_auth, context=ctx)
+    assert res.brain_status == BrainStatus.COMPLETED
+    assert mem_engine.get_exact("pref", "editor") is None
+    assert any("denied" in d.lower() for d in res.decision_history)
+
+
+def test_brain_core_waiting_for_user_resume_with_consent() -> None:
+    """Verifies two-step WAITING_FOR_USER resume flow for memory persistence."""
+    from argos.memory import MemoryEngine
+
+    mem_engine = MemoryEngine(db_path=":memory:")
+    brain = BrainCore(
+        capability_manager=create_default_capability_manager(
+            memory_engine=mem_engine
+        )
+    )
+
+    # Step 1: Mutation requested without authorization -> WAITING_FOR_USER
+    ctx = {
+        "pending_memory_mutation": {
+            "category": "user_fact",
+            "key": "city",
+            "value": "Tokyo",
+            "operation": "store_persistent",
+        }
+    }
+    res1 = brain.process("open notepad", context=ctx)
+    assert res1.brain_status == BrainStatus.WAITING_FOR_USER
+    assert mem_engine.get_exact("user_fact", "city") is None
+
+    # Step 2: Resume with granted explicit authorization -> COMPLETED & saved
+    auth = mem_engine.grant_explicit_consent(details="Confirmed by user")
+    res2 = brain.process("open notepad", authorization=auth)
+    assert res2.brain_status == BrainStatus.COMPLETED
+    rec = mem_engine.get_exact("user_fact", "city")
+    assert rec is not None
+    assert rec.value == "Tokyo"
+
+
+def test_brain_core_persistent_memory_update_and_delete() -> None:
+    """Verifies BrainCore persistent memory update and delete operations."""
+    from argos.memory import MemoryEngine
+
+    mem_engine = MemoryEngine(db_path=":memory:")
+    brain = BrainCore(
+        capability_manager=create_default_capability_manager(
+            memory_engine=mem_engine
+        )
+    )
+    auth = mem_engine.grant_explicit_consent(details="User confirmed")
+
+    # Store initial record
+    ctx_store = {
+        "pending_memory_mutation": {
+            "category": "pref",
+            "key": "theme",
+            "value": "light",
+            "operation": "store_persistent",
+        }
+    }
+    brain.process("open notepad", authorization=auth, context=ctx_store)
+    assert mem_engine.get_exact("pref", "theme").value == "light"
+
+    # Update record
+    ctx_update = {
+        "pending_memory_mutation": {
+            "category": "pref",
+            "key": "theme",
+            "value": "dark",
+            "operation": "update_persistent",
+        }
+    }
+    brain.process("open notepad", authorization=auth, context=ctx_update)
+    assert mem_engine.get_exact("pref", "theme").value == "dark"
+
+    # Delete record
+    ctx_delete = {
+        "pending_memory_mutation": {
+            "category": "pref",
+            "key": "theme",
+            "operation": "delete_persistent",
+        }
+    }
+    brain.process("open notepad", authorization=auth, context=ctx_delete)
+    assert mem_engine.get_exact("pref", "theme") is None
+
+
+def test_brain_core_memory_retrieval_by_category_key_and_resilience() -> None:
+    """Verifies category/key recall and exception resilience during recall."""
+    from argos.memory import MemoryEngine
+
+    mem_engine = MemoryEngine(db_path=":memory:")
+    auth = mem_engine.grant_explicit_consent()
+    mem_engine.store_persistent("pref", "font", "Fira Code", auth)
+
+    brain = BrainCore(
+        capability_manager=create_default_capability_manager(
+            memory_engine=mem_engine
+        )
+    )
+    ctx = {"memory_category": "pref", "memory_key": "font"}
+    res = brain.process("open notepad", context=ctx)
+    assert res.brain_status == BrainStatus.COMPLETED
+
+    # Verify exception resilience when capability fails during retrieval or reflection
+    class FailingMemoryCap(CognitiveCapability):
+        @property
+        def name(self) -> str:
+            return CAPABILITY_MEMORY
+
+        def execute(self, action: str, *args: Any, **kwargs: Any) -> Any:
+            raise RuntimeError("Transient recall or record failure")
+
+    mgr = CapabilityManager(
+        capabilities=[
+            InputCapability(),
+            IntentCapability(),
+            PlanningCapability(),
+            ExecutionCapability(),
+            FailingMemoryCap(),
+        ]
+    )
+    failing_brain = BrainCore(capability_manager=mgr)
+    ctx_failing = {
+        "recall_session_memory": True,
+        "memory_category": "pref",
+        "memory_key": "font",
+    }
+    res_failing = failing_brain.process("open notepad", context=ctx_failing)
+    assert res_failing.brain_status == BrainStatus.COMPLETED
+
+
+def test_session_memory_retrieval_not_automatic_unless_requested() -> None:
+    """Verifies Session Memory retrieval is not automatic."""
+    mock_cap = Mock(spec=CognitiveCapability)
+    mock_cap.name = CAPABILITY_MEMORY
+    mock_cap.execute.return_value = []
+
+    mgr = CapabilityManager(
+        capabilities=[
+            InputCapability(),
+            IntentCapability(),
+            PlanningCapability(),
+            ExecutionCapability(),
+            mock_cap,
+        ]
+    )
+    brain = BrainCore(capability_manager=mgr)
+
+    # 1. Default call: no recall requested
+    res1 = brain.process("open notepad")
+    assert res1.brain_status == BrainStatus.COMPLETED
+    # Verify get_session_turns was NOT called during reasoning
+    for call in mock_cap.execute.call_args_list:
+        assert call.args[0] != "get_session_turns"
+
+    # 2. Explicit call: recall_session_memory = True
+    res2 = brain.process("open notepad", context={"recall_session_memory": True})
+    assert res2.brain_status == BrainStatus.COMPLETED
+    # Verify get_session_turns WAS called
+    mock_cap.execute.assert_any_call("get_session_turns", session_id="default")
+
+
+def test_decision_engine_generic_pending_capability_routing() -> None:
+    """Verifies DecisionEngine routes generic capabilities without hardcoding."""
+    de = DecisionEngine()
+    wm = WorkingMemory()
+    wm.parsed_request = Mock()
+    wm.intent_result = Mock()
+
+    # Generic capability: memory
+    wm.set_context("pending_capability", "memory")
+    assert de.decide_next_capability(wm) == "memory"
+
+    # Generic capability: policy
+    wm.set_context("pending_capability", "policy")
+    assert de.decide_next_capability(wm) == "policy"
+
+    # Generic capability: tools
+    wm.set_context("pending_capability", "tools")
+    assert de.decide_next_capability(wm) == "tools"
+
+    # Once marked executed, falls back to normal planning
+    wm.set_context("pending_capability_executed", True)
+    assert de.decide_next_capability(wm) == CAPABILITY_PLANNING
+
+
+def test_brain_core_generic_non_pipeline_capability_dispatch() -> None:
+    """Verifies BrainCore dispatches arbitrary non-pipeline capabilities generically."""
+    class PolicyCapability(CognitiveCapability):
+        @property
+        def name(self) -> str:
+            return "policy"
+
+        def execute(self, action: str, *args: Any, **kwargs: Any) -> str:
+            if action == "fail":
+                raise RuntimeError("Policy engine error")
+            return "policy_allowed"
+
+    mgr = create_default_capability_manager()
+    mgr.register(PolicyCapability())
+    brain = BrainCore(capability_manager=mgr)
+
+    # Dispatch custom policy capability
+    ctx = {
+        "pending_capability": "policy",
+        "pending_capability_action": "check_rule",
+    }
+    res = brain.process("open notepad", context=ctx)
+    assert res.brain_status == BrainStatus.COMPLETED
+
+    # Dispatch custom failing capability
+    ctx_fail = {
+        "pending_capability": "policy",
+        "pending_capability_action": "fail",
+    }
+    with pytest.raises(ProcessingError, match="unexpected error"):
+        brain.process("open notepad", context=ctx_fail)
+
 

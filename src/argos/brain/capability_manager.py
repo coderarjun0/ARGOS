@@ -1,7 +1,7 @@
-"""Capability management and adapter layer for the ARGOS Brain Core subsystem.
+"""Capability management layer for the ARGOS Brain Core subsystem.
 
-Registers and coordinates cognitive capabilities (Input, Intent, Planning, Execution)
-and wraps subsystem exceptions at the capability boundary in compliance with ADS-005.
+Registers and coordinates cognitive capabilities (Input, Intent, Planning,
+Execution, Memory) and wraps subsystem exceptions at capability boundaries.
 """
 
 from abc import ABC, abstractmethod
@@ -50,6 +50,9 @@ class CognitiveCapability(ABC):
             Exception: Subsystem-specific exceptions on failure.
         """
         ...
+
+
+from argos.memory.exceptions import MemoryError  # noqa: E402
 
 
 class InputCapability(CognitiveCapability):
@@ -220,6 +223,7 @@ class CapabilityManager:
             IntentAnalysisError,
             PlanningError,
             ExecutionError,
+            MemoryError,
         ) as err:
             raise ProcessingError(
                 f"Capability '{name}' failed with subsystem error: {err}"
@@ -235,6 +239,7 @@ def create_default_capability_manager(
     intent_analyzer: IntentAnalyzer | None = None,
     planner: Planner | None = None,
     execution_engine: ExecutionEngine | None = None,
+    memory_engine: Any = None,
 ) -> CapabilityManager:
     """Factory creating a CapabilityManager populated with standard subsystem adapters.
 
@@ -243,15 +248,19 @@ def create_default_capability_manager(
         intent_analyzer: Optional custom IntentAnalyzer.
         planner: Optional custom Planner.
         execution_engine: Optional custom ExecutionEngine.
+        memory_engine: Optional custom MemoryEngine for MemoryCapability.
 
     Returns:
         A fully configured CapabilityManager with standard capabilities.
     """
+    from argos.memory.memory_capability import MemoryCapability
+
     return CapabilityManager(
         capabilities=[
             InputCapability(input_processor),
             IntentCapability(intent_analyzer),
             PlanningCapability(planner),
             ExecutionCapability(execution_engine),
+            MemoryCapability(memory_engine),
         ]
     )

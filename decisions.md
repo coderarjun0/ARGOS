@@ -711,6 +711,160 @@ Introduce a transient `WorkingMemory` container owned by the Brain for intra-ses
 
 ---
 
+# EDR-024
+
+## Dual-Store Memory Architecture
+
+**Date:** 2 July 2026
+
+**Status:** Approved (Frozen)
+
+### Context
+
+With the completion and freezing of ADS-001 through ADS-005, ARGOS possesses a complete cognitive reasoning loop and transient working memory. However, `WorkingMemory` resets at the beginning of each request. ARGOS is currently amnesic across requests: it has no mechanism to retain multi-turn conversational context, store persistent user preferences, or remember past decisions.
+
+The ARGOS Constitution (Article IV) establishes: *"User information belongs to the user... Long-term memory should be intentional, reviewable, and manageable by the user. An AI system that records everything without consent violates human dignity."*
+
+Furthermore, `ARCHITECTURE.md` (Section 7) and `MVP.md` (Section 3) specify a multi-tiered memory architecture consisting of Working Memory, Session Memory, and Long-Term Memory with Memory Consent.
+
+### Problem
+
+How should memory beyond transient Working Memory be architected, scoped, stored, and integrated into ARGOS while preserving:
+1. Deterministic V1 behavior (no non-deterministic vector retrieval or probabilistic hallucinations).
+2. Constitutional privacy and human consent ("Remember with permission").
+3. Loose coupling and dependency inversion (Brain Core must remain independent of concrete storage mechanisms).
+4. Robust transactional integrity, crash resilience, and high reliability without introducing external cloud or third-party dependencies.
+
+### Options Considered
+
+1. **Monolithic Schema-Validated JSON File:**
+   Store all session context and long-term memories in a single local JSON file.
+   * *Pros:* Human-readable, simple to inspect with standard text editors.
+   * *Cons:* Lacks atomic commits; process interruption during writes can lead to file corruption; poor query performance; concurrency conflicts; requires reading and rewriting the entire file for every update.
+
+2. **Vector Database / Embedding Engine (e.g., Chroma, FAISS, Qdrant):**
+   Store semantic memories as high-dimensional vector embeddings for similarity search.
+   * *Pros:* Fuzzy semantic retrieval.
+   * *Cons:* Violates the deterministic V1 mandate; introduces heavy external dependencies; requires an embedding model; non-deterministic retrieval contradicts predictable OS-level behavior.
+
+3. **Dual-Store Architecture (In-Memory Session Cache + Local SQLite Persistent Store with Consent Gateway):**
+   Split memory into two decoupled tiers:
+   * *Session Store:* Fast in-memory turn-based history for multi-turn conversational continuity within an active session.
+   * *Persistent Semantic Store:* Transactionally sound, local SQLite database for durable user preferences, system configurations, and explicit declarative facts.
+   * *Consent Gateway:* Dedicated validation component requiring explicit user authorization before committing persistent memories.
+
+### Decision
+
+Adopt **Option 3: Dual-Store Memory Architecture** for ADS-006 and Version 1 of ARGOS.
+
+#### 1. Memory Taxonomy & V1 Boundaries
+* **Working Memory (Internal to `argos.brain`):** Transient intra-cycle scratchpad holding active DTOs and loop state. Resets every request. Owned exclusively by Brain Core (ADS-005).
+* **Session Memory (Transient Multi-Turn):** In-memory deterministic FIFO turn cache retaining recent conversational interactions, dialogue history, and recent entity bindings within an active session. Discarded when the session terminates.
+* **Persistent Semantic Memory (Durable Local Storage):** Durable on-disk factual store for user preferences, environmental configurations, and explicit declarative knowledge that survives restarts.
+* **Deferred Memory Types:** Episodic event graphs (detailed longitudinal execution logs), Procedural memory (learned automation skills), and Vector/Embedding memory are **explicitly deferred** to post-V1 milestones.
+
+#### 2. Storage Architecture: SQLite
+Persistent semantic memory shall use **SQLite** via the Python standard library `sqlite3` module.
+* **Transactional Integrity & Atomic Commits:** Provides ACID guarantees through write-ahead logging or rollback journals. Writes either fully commit or cleanly roll back, ensuring crash resilience and controlled failure behavior without claiming absolute physical immunity from disk corruption.
+* **Single Local File:** Stored exclusively in local application data (e.g., `~/.argos/memory.db`).
+* **Zero Dependencies:** Pure Python standard library with no external packages.
+* **Indexing & Evolution:** Provides indexed exact-match queries (by key, category, and entity) and standard SQL schema migration paths.
+* **Privacy:** 100% local, offline, inspectable, and exportable.
+
+#### 3. Session Identification Model
+Session memory shall be identified via a **Single Default Session with Optional Explicit `session_id`**.
+* Default: `session_id = "default"`.
+* API signatures accept `session_id: str = DEFAULT_SESSION_ID`.
+* Satisfies V1 single-user CLI needs without blocking future multi-window or multi-session interfaces.
+
+#### 4. Memory Consent vs. General Policy Boundary
+In strict adherence to Constitution Article IV ("Remember with permission"):
+* **Read Operations:** Non-destructive; executed automatically when relevant context is needed.
+* **Session Memory Writes:** Permitted automatically within the active session lifecycle for conversational continuity.
+* **Persistent Memory Operations (Writes, Updates, Deletions):** Require explicit memory-specific authorization.
+* **Consent vs. Policy Engine Distinction:**
+  * Memory Consent is a **constitutional, memory-specific authorization mechanism** governed by Article IV.
+  * ADS-006 may validate whether valid authorization exists (e.g., via one-time user consent or established authorization metadata).
+  * ADS-006 does **NOT** define or implement the broader ARGOS Policy Engine.
+  * The future Policy Engine (`argos.policy`) owns generalized system policies, governance rules, and cross-subsystem rule evaluation. Memory must **not** become a hidden policy engine.
+* **Cognitive State Integration:** Memory consent requests shall **reuse the existing `CognitiveState.WAITING_FOR_USER`** and `BrainStatus.WAITING_FOR_USER` states in Brain Core. No competing or redundant cognitive state shall be introduced.
+
+#### 5. Separation of Responsibilities & Ownership
+* **Brain Core (`argos.brain`):** Owns cognitive reasoning. Decides *when* memory retrieval is useful (during `Reason` phase); decides *when* information should be proposed for retention (during `Reflect` phase); participates in the cognitive consent flow (driving state transitions like `WAITING_FOR_USER`).
+* **Memory Subsystem (`argos.memory`):** Subordinate capability. Responsible for storage, schema validation, index retrieval, enforcing memory-specific authorization constraints, inspection, updates, and deletion.
+* **Policy Engine (`argos.policy` — Future):** Owns generalized policies and system governance.
+* **Non-Responsibilities:** Memory does NOT reason, plan, execute commands, autonomously decide user intent, or evaluate general system policies.
+
+#### 6. Privacy & Boundary Rules
+* **Local-Only:** Persistent databases must never sync to external networks or cloud services in V1.
+* **Logging Isolation:** Sensitive user preferences, memory values, and personal facts must NEVER appear in logs at `INFO` level.
+* **Raw Text Protection:** Raw user input prompts are not stored verbatim in persistent memory; only structured, approved key-value facts and preferences extracted with consent.
+* **Transparency:** Memory provides explicit APIs to inspect, export, and explicitly delete stored records.
+
+#### 7. Brain Integration via Capability Adapter
+* `argos.memory` shall be built as an independent, fully self-contained package.
+* Integration with `argos.brain` shall occur strictly through the existing `CognitiveCapability(ABC)` abstraction via a `MemoryCapability` adapter registered in `CapabilityManager`.
+* `BrainCore` remains decoupled from concrete SQLite or storage details, preserving 100% dependency inversion.
+
+#### 8. Data Model Principles
+EDR-024 defines architectural requirements and invariants; concrete DTO schemas, serialization protocols, and database tables are left to ADS-006. Architectural principles:
+* **Identity:** Deterministic or UUID string identifier.
+* **Scope:** Explicit scope demarcation (`SESSION` vs `PERSISTENT`).
+* **Category & Key:** Indexed categorical and key identifiers (e.g., `preference`, `fact`, `system`).
+* **Value:** Structured, serializable value payload.
+* **Provenance & Timestamps:** UTC creation/update timestamps and origin tracking (`source`).
+* **Authorization Provenance:** Metadata must be sufficient to establish authorization provenance (e.g., consent status, authorization source, timestamp) without prematurely locking the representation to a simple boolean if a richer model is architecturally warranted in ADS-006.
+* **Table Design:** Concrete SQL tables, column types, and indices belong to ADS-006, not this EDR.
+
+#### 9. Retention & Deletion Policy
+* Session Memory enforces a deterministic FIFO capacity ceiling (e.g., maximum 50 turns).
+* Persistent Memory retains entries indefinitely until explicitly modified or deleted by the user.
+* Heuristic eviction, probabilistic forgetting, automated pruning, and decay algorithms are **explicitly excluded from V1**.
+
+#### 10. Failure Semantics & Graceful Degradation
+Memory failures are not treated as equivalent; behavior is categorized by operation:
+* **A. Memory Retrieval Failure:** Optional retrieval failure may degrade gracefully. If retrieval experiences transient lock contention or temporary unavailability, `MemoryCapability` logs a warning at `DEBUG` level and returns empty context; `BrainCore` continues reasoning using raw input alone without cognitive state corruption.
+* **B. Persistent Memory Write Failure:** Failed persistent writes must **never** be reported as successful. If storage write fails, the error must remain observable, working memory must record the failure in decision logs, and an explicit failure outcome is reported.
+* **C. Persistent Memory Update Failure:** Failed updates must **never** silently disappear or leave partially updated state. Transactions must cleanly roll back, maintaining data consistency.
+* **D. Persistent Memory Deletion Failure:** Failed deletions must remain observable, accurately reporting that data remains intact rather than falsely confirming removal.
+* **E. Storage Corruption / Unrecoverable Failure:** If the database file suffers confirmed corruption or unrecoverable failure, storage failures must **never** be silently converted into empty context; `MemoryStorageError` is raised and wrapped as `ProcessingError` at the capability boundary.
+* **F. Consent Denial:** User denial of consent is not a system failure, but a valid human choice. The commit is aborted, the refusal is recorded in working memory decision logs, and cognition completes with a consistent terminal status.
+
+### Rationale
+
+This dual-store architecture cleanly separates ephemeral multi-turn conversational state from durable long-term facts. Utilizing Python's built-in SQLite engine provides transactional integrity, atomic commits, crash resilience, and zero external dependencies while respecting the user's local privacy. Reusing `WAITING_FOR_USER` reinforces the principle that user consent is a first-class cognitive pause rather than an ad-hoc callback.
+
+### Consequences
+
+#### Positive:
+* **Constitutional Compliance:** Implements Article IV's "Memory with Permission" mandate before any personal user data is collected.
+* **Contextual Continuity:** Enables multi-turn conversations and personalized planning based on recalled preferences.
+* **Zero External Dependencies:** Built entirely on Python 3.13+ standard library (`sqlite3`, `dataclasses`).
+* **Architectural Preservation:** Preserves existing ADS-001 through ADS-005 contracts without breaking changes.
+
+#### Negative / Constraints:
+* **No Fuzzy Matching in V1:** Retrieval is limited to exact keys, categories, and tags; unstructured semantic similarity search is deferred.
+* **Storage Overhead:** Introduces disk I/O management, crash recovery, and schema migration responsibilities into the test suite.
+
+### Rejected Alternatives
+
+* **Flat JSON Files:** Rejected due to non-atomic writes, lack of transactional integrity, concurrency race conditions, and vulnerability to file corruption during process interruption.
+* **Cloud / Third-Party Vector DBs:** Rejected due to network requirements, vendor lock-in, non-deterministic retrieval, and privacy violations.
+* **Unified Single Store:** Rejected because transient conversational dialogue turns and permanent user preferences have fundamentally different lifecycles, scopes, and consent requirements.
+
+### Dependencies
+
+* **Upstream:** Python standard library (`sqlite3`), `argos.brain.capability_manager.CognitiveCapability`.
+* **Downstream:** `argos.policy` (future Policy Engine will read rules stored in Semantic Memory).
+
+### Future Revisit Conditions
+
+* Revisit when local neural models or embeddings are introduced, allowing deterministic exact-match retrieval to be augmented with local vector similarity search.
+* Revisit when multi-agent collaboration or distributed daemon services require multi-tenant memory synchronization.
+* Revisit when healthy forgetting and automated memory compaction algorithms are formally scheduled.
+
+---
+
 # Founder's Pact
 
 **Date:** 26 June 2026

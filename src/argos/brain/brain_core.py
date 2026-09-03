@@ -2,7 +2,7 @@
 
 Coordinates the Cognitive Loop (Perceive -> Understand -> Reason -> Decide -> Act
 -> Observe -> Reflect -> Repeat), managing working memory, goals, decisions, and
-pluggable capabilities in compliance with ADS-005.
+pluggable capabilities in compliance with ADS-005 and ADS-006.
 """
 
 import logging
@@ -20,6 +20,7 @@ from argos.brain.capability_manager import (
     create_default_capability_manager,
 )
 from argos.brain.constants import (
+    CAPABILITY_MEMORY,
     DEFAULT_BRAIN_ENGINE,
     DEFAULT_MAX_COGNITIVE_CYCLES,
 )
@@ -36,6 +37,8 @@ from argos.execution.execution_status import ExecutionStatus
 from argos.input.input_request import InputRequest
 from argos.input.processor import InputProcessor
 from argos.intent.analyzer import IntentAnalyzer
+from argos.memory.constants import DEFAULT_SESSION_ID
+from argos.memory.models import AuthorizationRecord, SessionTurn
 from argos.planning.planner import Planner
 
 logger = logging.getLogger(__name__)
@@ -131,7 +134,13 @@ class BrainCore:
         """Returns the active WorkingMemory instance."""
         return self._working_memory
 
-    def process(self, request: InputRequest | str) -> BrainResult:
+    def process(
+        self,
+        request: InputRequest | str,
+        authorization: AuthorizationRecord | None = None,
+        session_id: str = DEFAULT_SESSION_ID,
+        context: dict[str, Any] | None = None,
+    ) -> BrainResult:
         """Executes the complete cognitive loop for a user request.
 
         Performs the cognitive reasoning lifecycle:
@@ -139,6 +148,9 @@ class BrainCore:
 
         Args:
             request: An InputRequest instance or a raw text string.
+            authorization: Optional user authorization record for memory operations.
+            session_id: Session identifier string.
+            context: Optional initial context key-value pairs for WorkingMemory.
 
         Returns:
             A compiled BrainResult container.
@@ -150,7 +162,18 @@ class BrainCore:
         """
         normalized_request = self._validate_and_normalize_request(request)
         wm = self._working_memory
-        wm.reset()
+
+        # Reset working memory unless resuming WAITING_FOR_USER with auth
+        if (
+            wm.cognitive_state != CognitiveState.WAITING_FOR_USER
+            or authorization is None
+        ):
+            wm.reset()
+
+        if context:
+            for k, v in context.items():
+                wm.set_context(k, v)
+
         wm.raw_input = normalized_request
 
         logger.debug("Cognitive session initialized.")
@@ -191,6 +214,52 @@ class BrainCore:
             logger.info("Active Goal resolved: %s", goal.name)
             wm.record_decision(f"Reasoned active goal: {goal.name}")
 
+            # Explicit Session Memory Recall Request (if requested in context)
+            if (
+                wm.get_context("recall_session_memory")
+                and not wm.get_context("session_turns")
+                and not wm.get_context("pending_capability_executed")
+            ):
+                wm.set_context("pending_capability", CAPABILITY_MEMORY)
+                wm.set_context("pending_capability_action", "get_session_turns")
+                wm.set_context(
+                    "pending_capability_kwargs", {"session_id": session_id}
+                )
+
+            # Explicit Persistent Record Retrieval Request (if requested in context)
+            cat = wm.get_context("memory_category")
+            key = wm.get_context("memory_key")
+            if (
+                cat
+                and key
+                and not wm.get_context("retrieved_memory")
+                and not wm.get_context("pending_capability_executed")
+            ):
+                wm.set_context("pending_capability", CAPABILITY_MEMORY)
+                wm.set_context("pending_capability_action", "get_exact")
+                wm.set_context(
+                    "pending_capability_kwargs", {"category": cat, "key": key}
+                )
+
+            # Persistent Memory Mutation Request Staging
+            pending_mutation = wm.get_context("pending_memory_mutation")
+            if pending_mutation and not wm.get_context(
+                "pending_capability_executed"
+            ):
+                op = pending_mutation.get("operation", "store_persistent")
+                p_cat = pending_mutation["category"]
+                p_key = pending_mutation["key"]
+                p_kwargs = {"category": p_cat, "key": p_key}
+                if op == "update_persistent":
+                    p_kwargs["new_value"] = pending_mutation.get("value")
+                elif op == "store_persistent":
+                    p_kwargs["value"] = pending_mutation.get("value")
+
+                wm.set_context("pending_capability", CAPABILITY_MEMORY)
+                wm.set_context("pending_capability_action", op)
+                wm.set_context("pending_capability_kwargs", p_kwargs)
+                wm.set_context("pending_capability_requires_consent", True)
+
             # Check if clarification is needed
             if self._decision_engine.evaluate_clarification_needed(wm):
                 wm.record_decision(
@@ -208,6 +277,79 @@ class BrainCore:
                 self._transition(CognitiveState.WAITING_FOR_USER)
                 wm.record_decision("Paused execution awaiting user confirmation.")
                 break
+
+            # Handle non-pipeline generic capability dispatch (Memory, Policy, Tools)
+            if (
+                next_cap
+                and next_cap
+                not in (
+                    CAPABILITY_INPUT,
+                    CAPABILITY_INTENT,
+                    CAPABILITY_PLANNING,
+                    CAPABILITY_EXECUTION,
+                )
+                and self._capability_manager.has(next_cap)
+            ):
+                action = wm.get_context("pending_capability_action")
+                args = wm.get_context("pending_capability_args") or ()
+                kwargs = dict(wm.get_context("pending_capability_kwargs") or {})
+                requires_consent = wm.get_context(
+                    "pending_capability_requires_consent"
+                )
+
+                if requires_consent:
+                    if authorization is None:
+                        self._transition(CognitiveState.WAITING_FOR_USER)
+                        wm.record_decision(
+                            "Paused execution awaiting explicit user consent."
+                        )
+                        break
+
+                    if not authorization.granted:
+                        wm.record_decision(
+                            "User denied memory consent. Persistent mutation aborted."
+                        )
+                        wm.set_context("pending_capability_executed", True)
+                        active_goal = self._goal_manager.get_active_goal()
+                        if active_goal:
+                            self._goal_manager.complete_goal(active_goal.goal_id)
+                        break
+
+                    kwargs["authorization"] = authorization
+
+                try:
+                    res = self._capability_manager.execute(
+                        next_cap, action, *args, **kwargs
+                    )
+                    if action == "get_session_turns":
+                        wm.set_context("session_turns", res)
+                    elif action == "get_exact":
+                        wm.set_context("retrieved_memory", res)
+                    elif action in ("store_persistent", "update_persistent"):
+                        wm.set_context("committed_memory", res)
+                    elif action == "delete_persistent":
+                        wm.set_context("deleted_memory", res)
+                    else:
+                        wm.set_context(f"{next_cap}_result", res)
+
+                    wm.record_decision(
+                        f"Executed capability '{next_cap}' with action '{action}'."
+                    )
+                    active_goal = self._goal_manager.get_active_goal()
+                    if active_goal and requires_consent:
+                        self._goal_manager.complete_goal(active_goal.goal_id)
+                except Exception as err:
+                    if action in ("get_session_turns", "get_exact"):
+                        logger.debug("Optional memory recall skipped: %s", err)
+                    else:
+                        logger.error(
+                            "Capability '%s' execution failed: %s", next_cap, err
+                        )
+                        raise
+
+                wm.set_context("pending_capability_executed", True)
+                if requires_consent:
+                    break
 
             # 5. ACT & OBSERVE (PLANNING)
             if next_cap == CAPABILITY_PLANNING:
@@ -245,6 +387,41 @@ class BrainCore:
             # 8. REPEAT OR TERMINATE
             if not self._decision_engine.should_continue_reasoning(wm):
                 break
+
+        # Record session turn in SessionStore if Memory capability is present
+        if self._capability_manager.has(CAPABILITY_MEMORY):
+            try:
+                turn = SessionTurn(
+                    turn_id=wm.cycle_count,
+                    session_id=session_id,
+                    user_input=wm.raw_input.raw_text if wm.raw_input else "",
+                    normalized_text=(
+                        wm.parsed_request.normalized_text
+                        if wm.parsed_request
+                        else ""
+                    ),
+                    intent_name=(
+                        wm.intent_result.primary_intent.name
+                        if wm.intent_result
+                        else None
+                    ),
+                    plan_summary=(
+                        wm.plan.steps[0].action.value
+                        if (wm.plan and wm.plan.steps)
+                        else None
+                    ),
+                    execution_status=(
+                        wm.execution_result.status.value
+                        if wm.execution_result
+                        else None
+                    ),
+                    timestamp=datetime.now(UTC),
+                )
+                self._capability_manager.execute(
+                    CAPABILITY_MEMORY, "record_turn", turn
+                )
+            except Exception as err:
+                logger.debug("Session turn recording skipped: %s", err)
 
         return self._compile_result(wm)
 
@@ -302,7 +479,10 @@ class BrainCore:
 
     def _compile_result(self, wm: WorkingMemory) -> BrainResult:
         """Compiles the final BrainResult and sets the terminal status."""
-        brain_status = self._decision_engine.decide_terminal_status(wm)
+        if wm.cognitive_state == CognitiveState.WAITING_FOR_USER:
+            brain_status = BrainStatus.WAITING_FOR_USER
+        else:
+            brain_status = self._decision_engine.decide_terminal_status(wm)
 
         if brain_status == BrainStatus.COMPLETED:
             self._transition(CognitiveState.COMPLETED)

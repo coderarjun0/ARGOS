@@ -242,6 +242,29 @@ Fourth functional codebase release of ARGOS implementing the central cognitive h
 
 ---
 
+# Version v0.6.0-alpha — Memory System Subsystem
+
+**Release Date:** 3 September 2026
+
+## Overview
+
+Fifth functional codebase release of ARGOS implementing the Memory System subsystem (ADS-006). This release equips ARGOS with multi-tier memory capabilities, supporting transient Session Memory, durable SQLite Persistent Semantic Memory, explicit user consent authorization, unified facade management via `MemoryEngine`, and seamless, capability-agnostic integration with `BrainCore`.
+
+## Added
+
+### ADS-006 — Memory System Subsystem
+
+* **SessionStore**: In-memory, bounded FIFO turn store (`DEFAULT_MAX_SESSION_TURNS = 50`) providing transient multi-turn context without filesystem side-effects.
+* **PersistentStore / SQLiteStore**: Standard-library SQLite storage backend supporting ACID-compliant atomic transactions, versioned key-category key-value persistence (`SCHEMA_VERSION = 1`), prefix searches, category listings, read-only inspection, and structured JSON exports.
+* **ConsentManager**: Stateless authorization gateway validating explicit user consent (`EXPLICIT_USER_CONSENT`) prior to persistent semantic memory mutations. In V1, policy pre-authorization and system default authorization are strictly rejected to guarantee privacy and provenance integrity.
+* **MemoryEngine**: Public facade orchestrating transient session state, persistent SQLite storage, and authorization validation with constructor-based dependency injection for in-memory test databases (`:memory:`).
+* **MemoryCapability**: Cognitive capability adapter implementing `CognitiveCapability` interface with `CAPABILITY_MEMORY = "memory"`, enabling dynamic execution of session, persistent read, persistent mutation, and consent helper operations.
+* **Brain Core Integration & Cognitive Capability Routing**: Integrated `MemoryCapability` into `BrainCore` and `CapabilityManager` with generic, capability-agnostic capability routing in `DecisionEngine` (`pending_capability`). Preserves automatic `SessionTurn` recording during reflection (`REFLECT`), explicit cognition-driven session recall during `REASONING`, and stateful two-step `WAITING_FOR_USER` consent pause and resumption.
+* **214 Unit & Integration Tests**: Comprehensive test suite verifying zero memory storage side-effects during read-only ops, strict consent validation, bounded FIFO evictions, atomic SQLite mutations, generic capability selection, and two-step consent pause/resume workflows.
+* **100% Statement Coverage**: Complete coverage across all 1,737 statements in `src/argos/` with zero Ruff linter errors.
+
+---
+
 # Upcoming Releases
 
 ## Version 0.5.0 — Foundation
