@@ -865,6 +865,75 @@ This dual-store architecture cleanly separates ephemeral multi-turn conversation
 
 ---
 
+# EDR-025
+
+## Deterministic Layered Policy Engine Architecture
+
+**Date:** 3 September 2026
+
+**Status:** Approved (Frozen)
+
+### Context
+
+Following the completion and freezing of ADS-001 through ADS-006 v1.1, ARGOS possesses complete request perception, semantic intent analysis, plan recipe compilation, step execution, cognitive loop orchestration (`BrainCore`), and multi-tier memory storage (`MemoryEngine`).
+
+However, prior to ADS-007, safety checks, confirmation requirements, and security boundaries were hardcoded, fragmented across capability modules, or inferred heuristically inside `Planner` or `DecisionEngine`. As ARGOS prepares to support real OS hardware execution (file operations, terminal commands, web sockets, external application tools) and neural LLM reasoning providers, relying on implicit or fragmented safety checks introduces critical risks of capability bypass, non-deterministic safety failures, or prompt injection exploits.
+
+Article I (Human First), Article V (Safety), and Article XIV (User Policies) of the ARGOS Constitution require that irreversible or high-impact actions mandate explicit confirmation, and that user-defined policies govern repetitive operations without compromising immutable safety.
+
+### Decision
+
+Adopt a **Deterministic Layered Policy Engine Architecture** for ADS-007 and Version 1 of ARGOS.
+
+#### 1. Architecture Triad & Separation of Concerns
+* **DecisionEngine (`argos.brain`):** Reasoning evaluator answering *"What capability/step should cognition execute next?"*
+* **PolicyEngine (`argos.policy`):** Governance evaluator answering *"Is the proposed capability/action allowed under applicable system and user policies, and under what conditions?"*
+* **Capability / Executor (`argos.execution`):** Mechanical execution component answering *"How is the operation performed?"*
+
+#### 2. Layered Enforcement Gateways (Infallible Governance)
+* **Layer 1 (Primary Gateway):** `CapabilityManager` evaluates `PolicyEngine.evaluate_capability(name, action, kwargs)` before dispatching to any `CognitiveCapability`. Every registered capability passes through Layer 1.
+* **Layer 2 (Tool Execution Gateway):** `ExecutionEngine` / `ActionRouter` evaluates `PolicyEngine.evaluate_action(action, target, params)` before executing low-level system side-effects (terminal commands, file paths, web URLs).
+* **Bypass Invariant:** No capability or tool can bypass policy evaluation.
+
+#### 3. Domain Model & Outcome Semantics
+* `PolicyOutcome` defines 4 public outcome states: `ALLOW` (Rank 1), `REQUIRE_CONFIRMATION` (Rank 2), `REQUIRE_AUTHORIZATION` (Rank 3), `DENY` (Rank 4).
+* Internal conflict resolution uses **Deny-Override** and **Specificity-Override** algorithms to produce deterministic outcomes. Public `CONFLICT` is explicitly excluded.
+
+#### 4. Absolute Scope Precedence Hierarchy
+$$\text{CONSTITUTION} \gt \text{SYSTEM\_IMMUTABLE} \gt \text{SYSTEM\_SECURITY} \gt \text{USER\_POLICY} \gt \text{CONTEXTUAL} \gt \text{DEFAULT\_FALLBACK}$$
+* Constitutional principles (Articles I, IV, V) and hardcoded system prohibitions (`SYSTEM_IMMUTABLE`) cannot be overridden by user policies, database edits, or LLM proposals.
+
+#### 5. Fail-Closed Semantics
+* Policy evaluation is 100% deterministic, side-effect free, and thread-safe.
+* Evaluation errors, malformed user rules, or missing parameters **NEVER** fail open to `ALLOW`; they default deterministically to `DENY` or `REQUIRE_CONFIRMATION`.
+
+#### 6. Restricted Declarative Representation (Anti-Arbitrary Code Execution)
+* Policy rules rely strictly on static text patterns, target actions, and structured `RuleOperator` enums (`EQUALS`, `CONTAINS`, `PREFIX_MATCH`, `REGEX_MATCH`, etc.).
+* Dynamic code evaluation (`eval()`), untrusted Python callbacks, or executable policy payloads from database or user inputs are strictly prohibited.
+
+#### 7. Memory & Consent Boundary Insulation
+* User-defined policy rules are persistent declarative data stored in `ADS-006 PersistentStore` under `category="policy_rule"`.
+* `PolicyEngine.reload_user_rules()` populates an in-memory rule snapshot cache at startup without triggering recursive policy evaluations on the startup read itself.
+* `ConsentManager` (ADS-006) remains the exclusive authority for Article IV constitutional user consent for persistent memory storage. `PolicyEngine` checks policy rules *before* `ConsentManager` checks explicit human consent.
+
+#### 8. Monotonic Confirmation Composition
+* Confirmation requirements between `DecisionEngine` and `PolicyEngine` are cumulative and monotonic. If *either* engine requests user confirmation, `BrainCore` transitions to `WAITING_FOR_USER`. Neither engine can override or cancel a confirmation requested by the other. `PolicyEngine.DENY` overrides any execution-ready proposal.
+
+### Consequences
+
+#### Positive:
+* **Bypass-Proof Safety:** Layered policy gateways guarantee 100% governance coverage across all capabilities and OS tools.
+* **Neural LLM Protection:** Neural LLM proposal engines cannot bypass safety prohibitions or self-grant elevated privileges.
+* **Zero External Dependencies:** Built entirely on Python standard library (`dataclasses`, `enum`, `datetime`, `re`).
+* **Architectural Preservation:** Preserves existing ADS-001 through ADS-006 contracts with zero breaking changes.
+
+#### Negative / Constraints:
+* **Storage Overhead:** Requires caching user policy rules loaded from `MemoryEngine`.
+* **Layered Evaluation Latency:** Introduces lightweight in-memory rule evaluation steps at capability and tool dispatch boundaries.
+
+---
+
+
 # Founder's Pact
 
 **Date:** 26 June 2026

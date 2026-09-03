@@ -335,7 +335,7 @@ def test_capability_adapters_and_manager() -> None:
     assert mgr.has(CAPABILITY_PLANNING)
     assert mgr.has(CAPABILITY_EXECUTION)
     assert mgr.has(CAPABILITY_MEMORY)
-    assert len(mgr.list_capabilities()) == 5
+    assert len(mgr.list_capabilities()) == 6
 
     # Direct execution through adapters
     input_req = InputRequest(
@@ -877,7 +877,7 @@ def test_default_capability_manager_has_memory_capability() -> None:
     mgr = create_default_capability_manager()
     assert mgr.has(CAPABILITY_MEMORY)
     assert CAPABILITY_MEMORY == "memory"
-    assert len(mgr.list_capabilities()) == 5
+    assert len(mgr.list_capabilities()) == 6
 
 
 def test_capability_manager_memory_error_wrapping() -> None:
@@ -1195,6 +1195,7 @@ def test_brain_core_generic_non_pipeline_capability_dispatch() -> None:
             return "policy_allowed"
 
     mgr = create_default_capability_manager()
+    mgr._capabilities.pop("policy", None)
     mgr.register(PolicyCapability())
     brain = BrainCore(capability_manager=mgr)
 
@@ -1213,5 +1214,110 @@ def test_brain_core_generic_non_pipeline_capability_dispatch() -> None:
     }
     with pytest.raises(ProcessingError, match="unexpected error"):
         brain.process("open notepad", context=ctx_fail)
+
+
+def test_capability_manager_and_brain_core_uncovered_branches():
+    """Verifies capability manager and brain core uncovered edge cases."""
+    from argos.brain.capability_manager import CapabilityManager, InputCapability
+    from argos.brain.exceptions import (
+        MaxCyclesExceededError,
+        ProcessingError,
+        ValidationError,
+    )
+
+    mgr = CapabilityManager()
+    ic = InputCapability()
+    mgr.register(ic)
+
+    # Register duplicate
+    with pytest.raises(ValidationError, match="already registered"):
+        mgr.register(ic)
+
+    # Get unknown
+    with pytest.raises(ValidationError, match="not registered"):
+        mgr.get("unknown_capability")
+
+    # Execute without args/kwargs action
+    with pytest.raises(ProcessingError, match="unexpected error"):
+        mgr.execute("input_processing")
+
+    # BrainCore max cycles exceeded
+    brain = BrainCore(max_cycles=1)
+    assert brain.max_cycles == 1
+    assert mgr.policy_engine is not None
+
+    # Alias normalization branch L192
+    from argos.brain.constants import CAPABILITY_INPUT
+    assert mgr._normalize_name("input") == CAPABILITY_INPUT
+
+    # Action supplied via kwargs L259 on PolicyCapability
+    from argos.policy.policy_capability import PolicyCapability
+    mgr.register(PolicyCapability())
+    dec_act = mgr.execute("policy", action="evaluate_action", target="test.txt")
+    assert dec_act is not None
+
+    # Mock capability manager to never complete goal, causing cycle loop to exceed limit
+    brain._decision_engine.should_continue_reasoning = lambda wm: True
+    with pytest.raises(MaxCyclesExceededError, match="exceeded limit"):
+        brain.process("open notepad")
+
+
+def test_brain_core_post_plan_clarification_and_generic_capability_policy_error():
+    """Verifies clarification loop and generic capability policy error."""
+    from argos.brain.brain_core import CognitiveState
+    from argos.brain.capability_manager import create_default_capability_manager
+    from argos.memory.models import AuthorizationRecord, AuthorizationType
+    from argos.planning.action import Action
+    from argos.planning.plan import Plan
+    from argos.planning.plan_step import PlanStep
+    from argos.policy.models import (
+        PolicyOutcome,
+        PolicyRule,
+        PolicyScope,
+        RuleOperator,
+    )
+    from argos.policy.policy_engine import PolicyEngine
+
+    # 1. Post-plan clarification state loop (L268-273)
+    brain_clarify = BrainCore()
+    step = PlanStep(
+        step_id=1, action=Action.OPEN_APP, parameters={"application": "notepad"}
+    )
+    brain_clarify._working_memory.plan = Plan(steps=[step])
+    brain_clarify._transition(CognitiveState.WAITING_FOR_USER)
+
+    auth = AuthorizationRecord(
+        granted=True,
+        auth_type=AuthorizationType.EXPLICIT_USER_CONSENT,
+        granted_at=datetime.now(UTC),
+    )
+    res_c = brain_clarify.process("asdfghjkl zxcvbnm", authorization=auth)
+    assert res_c.brain_status == BrainStatus.WAITING_FOR_USER
+
+    # 2. Generic capability PolicyEvaluationError inside loop (L348-352)
+    p_engine = PolicyEngine()
+    # Policy rule mandating confirmation for memory get_exact action
+    p_engine.register_user_rule(
+        PolicyRule(
+            rule_id="CONFIRM_MEM_EXACT",
+            scope=PolicyScope.USER_POLICY,
+            target_capability="memory",
+            target_action="get_exact",
+            parameter_name=None,
+            operator=RuleOperator.EQUALS,
+            expected_value="*",
+            outcome=PolicyOutcome.REQUIRE_CONFIRMATION,
+            explanation="Memory exact read confirmation required",
+        )
+    )
+    mgr = create_default_capability_manager(policy_engine=p_engine)
+    brain_mem_err = BrainCore(capability_manager=mgr)
+    # Stage memory recall request (requires_consent is False, so L306 is skipped)
+    ctx = {
+        "memory_category": "user",
+        "memory_key": "name",
+    }
+    res_mem_err = brain_mem_err.process("open notepad", context=ctx)
+    assert res_mem_err.brain_status == BrainStatus.WAITING_FOR_USER
 
 

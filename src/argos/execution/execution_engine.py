@@ -1,10 +1,11 @@
 """Definition of the ExecutionEngine facade class.
 
 This module coordinates plan validation, step-by-step routing, result aggregation,
-and exception boundary translations.
+Layer 2 Policy Gateway enforcement, and exception boundary translations.
 """
 
 import logging
+from typing import Any
 
 from argos.execution.action_executor import ActionExecutor
 from argos.execution.action_router import ActionRouter
@@ -30,6 +31,8 @@ from argos.execution.web_executor import WebExecutor
 from argos.planning.action import Action
 from argos.planning.plan import Plan
 from argos.planning.plan_step import PlanStep
+from argos.policy.models import PolicyOutcome
+from argos.policy.policy_engine import PolicyEngine
 
 logger = logging.getLogger(__name__)
 
@@ -54,23 +57,31 @@ class _ClarificationExecutor(ActionExecutor):
 class ExecutionEngine:
     """Public facade for orchestrating Plan execution.
 
-    Coordinates validators, routers, executors, and result aggregators.
-    Supports constructor dependency injection.
+    Coordinates validators, routers, executors, Layer 2 Policy Gateway, and
+    result aggregators. Supports constructor dependency injection.
     """
 
     def __init__(
         self,
         router: ActionRouter | None = None,
         aggregator: ExecutionAggregator | None = None,
+        policy_engine: PolicyEngine | None = None,
     ) -> None:
         """Initializes the ExecutionEngine with optional injected components.
 
         Args:
             router: Optional custom ActionRouter instance.
             aggregator: Optional custom ExecutionAggregator instance.
+            policy_engine: Optional custom PolicyEngine instance.
         """
         self._router = router or self._build_default_router()
         self._aggregator = aggregator or ExecutionAggregator()
+        self._policy_engine = policy_engine or PolicyEngine()
+
+    @property
+    def policy_engine(self) -> PolicyEngine:
+        """Public access to underlying PolicyEngine instance."""
+        return self._policy_engine
 
     def _build_default_router(self) -> ActionRouter:
         """Creates the default ActionRouter and registers concrete executors."""
@@ -95,11 +106,12 @@ class ExecutionEngine:
 
         return router
 
-    def execute(self, plan: Plan) -> ExecutionResult:
-        """Orchestrates sequential execution of plan steps.
+    def execute(self, plan: Plan, authorization: Any | None = None) -> ExecutionResult:
+        """Orchestrates sequential execution of plan steps through Policy Gateway.
 
         Args:
             plan: The Plan object containing recipe steps.
+            authorization: Optional user authorization record.
 
         Returns:
             An ExecutionResult compiled from step results.
@@ -137,7 +149,7 @@ class ExecutionEngine:
         step_results: list[StepResult] = []
 
         try:
-            # 3. Iterate and route steps
+            # 3. Iterate, evaluate policy, and route steps
             for step in plan.steps:
                 logger.info("Executing step ID: %d", step.step_id)
                 logger.debug(
@@ -145,6 +157,56 @@ class ExecutionEngine:
                     step.action,
                     step.parameters,
                 )
+
+                # Layer 2 Policy Gateway Execution Action Evaluation
+                action_str = (
+                    step.action.value
+                    if hasattr(step.action, "value")
+                    else str(step.action)
+                )
+                target_str = (
+                    step.parameters.get("target") or step.parameters.get("path")
+                )
+                decision = self._policy_engine.evaluate_action(
+                    action=action_str,
+                    target=str(target_str) if target_str is not None else None,
+                    parameters=step.parameters,
+                )
+
+                if decision.outcome == PolicyOutcome.DENY:
+                    logger.warning(
+                        "Step %d denied by Layer 2 Policy: %s",
+                        step.step_id,
+                        decision.explanation,
+                    )
+                    step_result = StepResult(
+                        step_id=step.step_id,
+                        action=step.action,
+                        success=False,
+                        message=f"Policy DENY: {decision.explanation}",
+                    )
+                    step_results.append(step_result)
+                    break
+
+                if decision.outcome in (
+                    PolicyOutcome.REQUIRE_CONFIRMATION,
+                    PolicyOutcome.REQUIRE_AUTHORIZATION,
+                ):
+                    auth = step.parameters.get("authorization") or authorization
+                    if not auth or getattr(auth, "granted", False) is not True:
+                        logger.info(
+                            "Step %d requires policy confirmation: %s",
+                            step.step_id,
+                            decision.explanation,
+                        )
+                        step_result = StepResult(
+                            step_id=step.step_id,
+                            action=step.action,
+                            success=False,
+                            message=f"Policy requirement: {decision.explanation}",
+                        )
+                        step_results.append(step_result)
+                        break
 
                 executor = self._router.route(step.action)
                 step_result = executor.execute(step)
@@ -162,6 +224,9 @@ class ExecutionEngine:
                     )
 
                 step_results.append(step_result)
+
+                if not step_result.success:
+                    break
 
             # 5. Compile results using aggregator
             status = self._aggregator.aggregate(step_results)

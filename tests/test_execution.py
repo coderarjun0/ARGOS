@@ -5,6 +5,7 @@ robustness, and coverage of the execution pipeline.
 """
 
 import logging
+from datetime import UTC
 from unittest.mock import Mock
 
 import pytest
@@ -350,6 +351,10 @@ def test_engine_threshold_limits() -> None:
 
 def test_engine_normal_execution() -> None:
     """Verifies successful end-to-end routing, aggregation, and execution."""
+    from datetime import datetime
+
+    from argos.memory.models import AuthorizationRecord, AuthorizationType
+
     engine = ExecutionEngine()
     plan = Plan(
         steps=[
@@ -361,7 +366,14 @@ def test_engine_normal_execution() -> None:
             PlanStep(
                 step_id=2,
                 action=Action.RUN_COMMAND,
-                parameters={"command": "pytest"},
+                parameters={
+                    "command": "pytest",
+                    "authorization": AuthorizationRecord(
+                        granted=True,
+                        auth_type=AuthorizationType.EXPLICIT_USER_CONSENT,
+                        granted_at=datetime.now(UTC),
+                    ),
+                },
             ),
             PlanStep(
                 step_id=3,
@@ -514,3 +526,66 @@ def test_clarification_executor_mismatch() -> None:
     with pytest.raises(InvalidStepError) as excinfo:
         executor.execute(step)
     assert "cannot execute action" in str(excinfo.value)
+
+
+def test_execution_engine_edge_cases_and_policy() -> None:
+    """Verifies ExecutionEngine policy confirmation requirement and error handling."""
+    from argos.execution.exceptions import ExecutionError
+    from argos.policy.models import PolicyOutcome, PolicyRule, PolicyScope, RuleOperator
+    from argos.policy.policy_engine import PolicyEngine
+
+    pe = PolicyEngine()
+    pe.register_user_rule(PolicyRule(
+        rule_id="CONFIRM_APP",
+        scope=PolicyScope.USER_POLICY,
+        target_capability="tool_execution",
+        target_action="open_app",
+        parameter_name=None,
+        operator=RuleOperator.EQUALS,
+        expected_value="*",
+        outcome=PolicyOutcome.REQUIRE_CONFIRMATION,
+        explanation="App open confirmation required",
+    ))
+
+    engine = ExecutionEngine(policy_engine=pe)
+    assert engine.policy_engine is pe
+
+    # Plan with step requiring confirmation without authorization
+    step = PlanStep(
+        step_id=1, action=Action.OPEN_APP, parameters={"application": "notepad"}
+    )
+    plan = Plan(steps=[step])
+    res = engine.execute(plan)
+    assert len(res.step_results) == 1
+    assert "Policy requirement" in res.step_results[0].message
+
+    # Unexpected exception during step execution
+    mock_router = Mock()
+    mock_router.route.side_effect = RuntimeError("System crash")
+    failing_engine = ExecutionEngine(router=mock_router)
+    msg = "An unexpected error occurred during execution"
+    with pytest.raises(ExecutionError, match=msg):
+        failing_engine.execute(plan)
+
+
+def test_execution_engine_step_failure_stops_loop() -> None:
+    """Verifies that step failure stops plan execution loop (L229 break)."""
+    mock_executor = Mock()
+    mock_executor.execute.return_value = StepResult(
+        step_id=1, action=Action.OPEN_APP, success=False, message="App launch failed"
+    )
+    mock_router = Mock()
+    mock_router.route.return_value = mock_executor
+
+    engine = ExecutionEngine(router=mock_router)
+    step1 = PlanStep(
+        step_id=1, action=Action.OPEN_APP, parameters={"application": "calc"}
+    )
+    step2 = PlanStep(
+        step_id=2, action=Action.OPEN_APP, parameters={"application": "notepad"}
+    )
+    plan = Plan(steps=[step1, step2])
+    res = engine.execute(plan)
+    assert res.status == ExecutionStatus.FAILED
+    assert len(res.step_results) == 1
+    assert res.step_results[0].success is False

@@ -537,25 +537,60 @@ Implement Milestone 6.1 (Cognitive Capability Routing Correction), addressing th
 
 ---
 
+---
+
+# Session 14 — Policy Engine Architectural Specification & Freeze (ADS-007)
+
+**Date:** 3 September 2026
+
+## Objective
+
+Draft, refine, review, and freeze the Architecture Design Specification for ADS-007 Policy Engine Subsystem (`specs/ADS-007-Policy-Engine.md` v1.1 Approved/Frozen), establishing the centralized, deterministic, layered policy gateway for ARGOS without modifying existing code, tests, frozen specifications (ADS-001 through ADS-006 v1.1), or the ARGOS Constitution.
+
+## Completed
+
+* **Architectural Hardening & Review:** Resolved open architectural questions regarding enforcement locations (Layer 1 Capability Gateway + Layer 2 Tool Gateway), domain concepts, deterministic conflict resolution algorithms, outcome severity ranks, precedence hierarchies, fail-closed semantics, and memory consent boundary insulation.
+* **ADS-007 Specification Creation & Freeze:** Created `specs/ADS-007-Policy-Engine.md` (v1.1 Approved/Frozen) incorporating:
+  * **Absolute Scope Hierarchy:** `CONSTITUTION` > `SYSTEM_IMMUTABLE` > `SYSTEM_SECURITY` > `USER_POLICY` > `CONTEXTUAL` > `DEFAULT_FALLBACK`.
+  * **Domain Models:** `@dataclass(slots=True)` definitions for `PolicyRule` and `PolicyDecision`.
+  * **Outcomes:** `PolicyOutcome` enum (`ALLOW`, `DENY`, `REQUIRE_CONFIRMATION`, `REQUIRE_AUTHORIZATION`).
+  * **Canonical 4-Step Resolution Algorithm:** Scope Precedence $\rightarrow$ Deny-Override $\rightarrow$ Specificity Rank Ordering $\rightarrow$ Severity Rank Selection $\rightarrow$ Lexicographical `rule_id` tie-break.
+  * **Layered Enforcement Gateways:** Layer 1 in `CapabilityManager.execute()` pre-dispatch; Layer 2 in `ExecutionEngine.execute_step()` pre-tool execution.
+  * **Precise `REQUIRE_AUTHORIZATION` Lifecycle:** Redefined as an action-scoped context payload verification; decoupled from identity/authentication and insulated from ADS-006 `ConsentManager`.
+  * **Monotonic Confirmation Composition:** `DecisionEngine` and `PolicyEngine` confirmation requirements are cumulative and monotonic; `PolicyEngine.DENY` overrides any execution proposal.
+  * **Anti-Arbitrary Code Execution Invariant:** Strictly prohibits `eval()`, arbitrary string evaluation, untrusted lambdas, and dynamic module loading.
+* **Engineering Decision Record:** Created `EDR-025` in `decisions.md` documenting the formal approval and freezing of the Deterministic Layered Policy Engine Architecture.
+* **Cross-ADS & Constitutional Audit:** Verified 100% compatibility with ADS-001 through ADS-006 v1.1 and Articles I, IV, V, VI, VII, XI, XIV of the ARGOS Constitution. Zero breaking changes or spec contradictions.
+* **Preserved Code & Git Rules:** Zero modifications made to `src/`, `tests/`, or previous frozen specs. Zero Git commits or tags created.
+
+## Architectural Lessons Learned
+
+* **Layered Bypass-Proof Enforcement:** Placing policy evaluation at the `CapabilityManager` dispatch boundary (Layer 1) and `ExecutionEngine` tool boundary (Layer 2) guarantees that no registered capability or low-level OS tool can execute without policy inspection.
+* **Untrusted Proposal Isolation:** Treating neural LLMs and planning engines strictly as proposal generators while enforcing deterministic policy rules at the kernel boundary ensures ARGOS cannot be exploited by prompt injection attacks or unexpected model outputs.
+
+---
+
 # Current Status
 
 Current Phase:
 
 ✅ Foundation Complete
 ✅ Architecture Phase Complete
-✅ Module Specifications Complete (ADS-001 through ADS-006)
+✅ Module Specifications Complete (ADS-001 through ADS-007 v1.1 Approved/Frozen)
 ✅ Implementation Complete (ADS-001 through ADS-006, Milestones 1–6.1 Complete)
 ✅ Testing Complete (214 tests, 100% coverage across all 1,737 statements)
 ✅ Integration Complete (Memory System fully integrated with Brain Core via generic capability routing)
+🚧 Pending Implementation (ADS-007 Policy Engine Subsystem)
 
 ---
 
 # Subsystem Metrics
 
-* **Engineering Decisions (EDRs):** 24 (7 blueprint, 17 implementation)
+* **Engineering Decisions (EDRs):** 25 (7 blueprint, 18 implementation/architecture)
 * **Lines of Production Code:** 1,737 statements
 * **Total Unit Tests:** 214
 * **Subsystem Code Coverage:** 100%
 * **Technical Debt Introduced:** 0 (Known)
+
 
 
