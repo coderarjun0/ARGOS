@@ -933,6 +933,35 @@ $$\text{CONSTITUTION} \gt \text{SYSTEM\_IMMUTABLE} \gt \text{SYSTEM\_SECURITY} \
 
 ---
 
+# EDR-026
+
+## Adopt a Composition-Root Architecture for the ARGOS System Runtime
+
+**Date:** 3 September 2026
+
+### Context
+
+With the complete implementation and freezing of all core subsystems (ADS-001 Input Processing through ADS-007 Policy Engine), ARGOS required an end-to-end entry point capability to manage system lifecycle, compose internal subsystem dependency graphs, and process real-world user requests deterministically without violating frozen architectural boundaries or modifying the cognitive center (`BrainCore`).
+
+### Decision
+
+Implement `argos.runtime` as a lightweight Composition Root, System Lifecycle Manager, and Boundary Adapter:
+
+1. **Composition Root Pattern**: `ArgosRuntime.create_default(db_path)` constructs `SQLiteStore`, `MemoryEngine`, `PolicyEngine`, `CapabilityManager`, and `BrainCore` in strict dependency order and injects them via explicit interfaces.
+2. **Cognitive Center Preservation**: `ArgosRuntime` delegates 100% of reasoning, intent analysis, strategy selection, policy checks, tool execution, and reflection to `BrainCore.process()`. `ArgosRuntime` performs zero cognitive or planning logic.
+3. **Session & Request Continuity**: `ArgosRuntime.handle(request, session_id, authorization, context)` passes session ID and pending authorization contexts to `BrainCore`, returning structured `RuntimeResponse` objects containing clear status codes (`RuntimeStatus`).
+4. **Clean Authorization Boundary**: The runtime preserves cognitive context and authorization parameters to resume `WAITING_FOR_USER` requests without issuing credentials, managing passwords, authenticating users, or persisting tokens.
+5. **Deterministic Boundary Translation**: Maps domain exceptions (`InputProcessingError`, `IntentAnalysisError`, `PlanningError`, `PolicyEvaluationError`, `ExecutionError`, `MaxCyclesExceededError`) cleanly into `RuntimeResponse` statuses (`MALFORMED_INPUT`, `INTENT_UNRESOLVED`, `PLANNING_FAILED`, `POLICY_DENIED`, `WAITING_FOR_USER`, `EXECUTION_FAILED`, `MAX_CYCLES_EXCEEDED`, `SYSTEM_ERROR`).
+6. **Graceful & Idempotent Shutdown**: Implement `.close()` and context manager protocols (`__enter__` / `__exit__`) to flush `MemoryEngine` stores and release file/database handles cleanly.
+7. **CLI Subcommand Adapter**: Implement `argos run "<request>"` and `argos interactive` REPL loop adapters in `argos.runtime.cli` without polluting runtime core domain modules.
+
+### Consequences
+
+* **Clean Subsystem Decoupling**: Application runtime and CLI code are isolated in `src/argos/runtime/`, ensuring frozen subsystems (`src/argos/brain`, `policy`, `execution`, `memory`, `planning`, `intent`, `input`) remain unmodified.
+* **Deterministic Demonstration Flow**: Real end-to-end execution (`"open calculator"`) executes deterministically without LLM calls or external network dependencies.
+* **100% Test Coverage**: Complete integration test suite (`tests/test_runtime.py`) verifies initialization, context handling, session continuity, policy denial, `WAITING_FOR_USER` authorization resumption, domain exception mapping, REPL interactions, and shutdown lifecycle.
+
+---
 
 # Founder's Pact
 

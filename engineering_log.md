@@ -570,6 +570,58 @@ Draft, refine, review, and freeze the Architecture Design Specification for ADS-
 
 ---
 
+# Session 15 — ADS-007 Policy Engine Implementation, Audit & Freeze (v0.7.0-alpha)
+
+**Date:** 3 September 2026
+
+## Objective
+
+Implement the complete ADS-007 Policy Engine subsystem (`src/argos/policy/`), integrate Layer 1 and Layer 2 policy enforcement gateways in `CapabilityManager` and `ExecutionEngine`, perform architectural audit and final coverage closure (100% statement coverage), and freeze commit/tag release `v0.7.0-alpha`.
+
+## Completed
+
+* **Subsystem Implementation**: Created `src/argos/policy/` package containing `models.py`, `constants.py`, `exceptions.py`, `predicates.py`, `system_rules.py`, `evaluator.py`, `policy_engine.py`, `policy_capability.py`, and `__init__.py`.
+* **Layered Enforcement Gateways**:
+  * **Layer 1 Gate**: `CapabilityManager.execute()` checks pre-capability dispatch.
+  * **Layer 2 Gate**: `ExecutionEngine.execute_step()` checks pre-tool execution.
+* **BrainCore Authorization Lifecycle**: Integrated policy evaluation outcome handling inside `BrainCore.process()`, managing `WAITING_FOR_USER` state transitions and authorization resumption.
+* **Verification & Audit**:
+  * Achieved 100% statement coverage (2,100 / 2,100 statements covered, 0 missed statements across all modules).
+  * 238 unit tests passing cleanly.
+  * `py -m ruff check .` clean with zero lint errors.
+* **Git Freeze**: Committed changes with message `"feat(policy): complete ADS-007 policy engine (v0.7.0-alpha)"` and tagged release `v0.7.0-alpha` at commit `31b2f32`.
+
+---
+
+# Session 16 — ARS-001 End-to-End Runtime Integration
+
+**Date:** 3 September 2026
+
+## Objective
+
+Implement the ARS-001 ARGOS System Runtime (`src/argos/runtime/`) to enable end-to-end execution of real user requests without an LLM dependency, without modifying frozen ADS specifications or core subsystem internal architecture.
+
+## Completed
+
+* **Runtime Package (`src/argos/runtime/`)**:
+  * `exceptions.py`: Declared runtime exception hierarchy (`RuntimeError`, `RuntimeInitializationError`, `RuntimeExecutionError`, `RuntimeShutdownError`).
+  * `models.py`: Declared `RuntimeStatus` enum catalog (`SUCCESS`, `MALFORMED_INPUT`, `INTENT_UNRESOLVED`, `PLANNING_FAILED`, `POLICY_DENIED`, `WAITING_FOR_USER`, `EXECUTION_FAILED`, `MAX_CYCLES_EXCEEDED`, `SYSTEM_ERROR`, `SHUTDOWN`) and `RuntimeResponse` DTO container.
+  * `argos_runtime.py`: Implemented `ArgosRuntime` Composition Root featuring `create_default(db_path)` factory, `.handle(request, session_id, authorization, context)`, `.close()`, context manager support (`__enter__` / `__exit__`), and deterministic domain exception mapping.
+  * `cli.py`: Implemented CLI entry point for `argos run "<request>"` and `argos interactive` REPL loop.
+  * `__init__.py`: Exposed public facade symbols (`ArgosRuntime`, `RuntimeStatus`, `RuntimeResponse`, `RuntimeError`).
+  * `pyproject.toml`: Configured console script entry point `argos = "argos.runtime.cli:main"`.
+* **Integration Test Suite (`tests/test_runtime.py`)**:
+  * Created 28 comprehensive integration test cases covering default wiring, single end-to-end request processing (`"open calculator"`), sequential session continuity, policy denial flow, `WAITING_FOR_USER` confirmation flow, authorization resumption, input error mapping, domain exception mapping, REPL interactions, CLI commands, exception handling during shutdown, and context manager usage.
+* **Engineering Decision Record**: Documented `EDR-026` in `decisions.md`.
+* **Verification Results**:
+  * **266 passed tests** (`266 passed in 1.57s`).
+  * **0 missed statements in `argos_runtime.py`** (100% statement coverage).
+  * **99.9% overall statement coverage** (2,304 / 2,306 statements covered across the entire repository).
+  * **Ruff clean** (0 errors).
+  * **Working tree uncommitted** as requested for final architectural review.
+
+---
+
 # Current Status
 
 Current Phase:
@@ -577,19 +629,19 @@ Current Phase:
 ✅ Foundation Complete
 ✅ Architecture Phase Complete
 ✅ Module Specifications Complete (ADS-001 through ADS-007 v1.1 Approved/Frozen)
-✅ Implementation Complete (ADS-001 through ADS-006, Milestones 1–6.1 Complete)
-✅ Testing Complete (214 tests, 100% coverage across all 1,737 statements)
-✅ Integration Complete (Memory System fully integrated with Brain Core via generic capability routing)
-🚧 Pending Implementation (ADS-007 Policy Engine Subsystem)
+✅ Implementation Complete (ADS-001 through ADS-007 v1.1 Frozen, v0.7.0-alpha)
+✅ Testing Complete (266 tests, 99.9% coverage across all 2,306 statements)
+✅ Runtime Integration Complete (ARS-001 System Runtime & CLI operational)
+🚧 Pending Architectural Review (ARS-001 Implementation Pass)
 
 ---
 
 # Subsystem Metrics
 
-* **Engineering Decisions (EDRs):** 25 (7 blueprint, 18 implementation/architecture)
-* **Lines of Production Code:** 1,737 statements
-* **Total Unit Tests:** 214
-* **Subsystem Code Coverage:** 100%
+* **Engineering Decisions (EDRs):** 26 (7 blueprint, 19 implementation/architecture)
+* **Lines of Production Code:** 2,306 statements
+* **Total Unit Tests:** 266
+* **Subsystem Code Coverage:** 99.9% (100% across all core subsystems and runtime facade)
 * **Technical Debt Introduced:** 0 (Known)
 
 
