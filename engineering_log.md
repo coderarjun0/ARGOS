@@ -622,26 +622,60 @@ Implement the ARS-001 ARGOS System Runtime (`src/argos/runtime/`) to enable end-
 
 ---
 
+# Session 17 — ARS-002 Real Capability & Tool Runtime Implementation
+
+**Date:** 3 September 2026
+
+## Objective
+
+Implement ARS-002 Real Capability & Tool Runtime (`src/argos/tools/`), bridging frozen ADS-004 `ActionRouter` step invocations to real system capabilities without modifying frozen subsystem source contracts, bypassing Layer 1/Layer 2 policy gates, or introducing process vulnerabilities.
+
+## Completed
+
+* **Real Tool Runtime Subsystem (`src/argos/tools/`)**:
+  * `exceptions.py`: Declared tool exception hierarchy (`ToolError`, `InvalidParameterError`, `ToolRegistrationError`, `ToolNotFoundError`, `PlatformExecutionError`).
+  * `base_tool.py`: Defined `SideEffectClass` enum, `ToolManifest` dataclass, `ToolResult` container, and `BaseTool` abstract base class.
+  * `tool_executor_adapter.py`: Implemented `ToolExecutorAdapter` subclassing frozen `ActionExecutor` ABC, bridging `ActionRouter` steps to `BaseTool` execution without altering frozen ADS-004 source contracts.
+  * `application_tool.py`: Implemented `ApplicationLauncherTool` for launching whitelisted host applications (`"calculator"`, `"calc"`, `"notepad"`).
+  * `adapters/base_platform.py`: Defined `BasePlatformAdapter` abstract base class for platform OS process dispatch.
+  * `adapters/win32_adapter.py`: Implemented `Win32PlatformAdapter` owning Windows application resolution (`"calculator"` $\rightarrow$ `"calc.exe"`) via `subprocess.Popen([binary], shell=False)` without shell expansion.
+  * `adapters/mock_adapter.py`: Implemented `MockPlatformAdapter` test fixture for fast, deterministic unit testing.
+  * `tool_registry.py`: Implemented `ToolRegistry` for explicit tool registration and action resolution.
+  * `__init__.py`: Exposed public facade symbols for tools and adapters.
+* **Runtime Composition Integration (`src/argos/runtime/argos_runtime.py`)**:
+  * Updated `ArgosRuntime.create_default()` factory to instantiate platform adapters, `ToolRegistry`, and bind `ToolExecutorAdapter` to `Action.OPEN_APP` in `ActionRouter`.
+* **Specification & Architectural Decisions**:
+  * Created `specs/ADS-008-Real-Tool-Runtime.md` (v1.0 Approved).
+  * Documented `EDR-027` in `decisions.md`.
+* **Testing & Verification**:
+  * Created `tests/test_tools.py` unit and integration test suite.
+  * Achieved **100.0% statement coverage (2,490 / 2,490 statements covered, 0 missed statements across all modules)**.
+  * **278 unit and integration tests passing cleanly**.
+  * **Ruff clean** (0 errors).
+  * Real host Windows verification: Executed `py -m argos.runtime.cli run "open calculator"`, successfully launching real Windows Calculator process (PID: 17900) without simulated output strings.
+
+---
+
 # Current Status
 
 Current Phase:
 
 ✅ Foundation Complete
 ✅ Architecture Phase Complete
-✅ Module Specifications Complete (ADS-001 through ADS-007 v1.1 Approved/Frozen)
-✅ Implementation Complete (ADS-001 through ADS-007 v1.1 Frozen, v0.7.0-alpha)
-✅ Testing Complete (266 tests, 99.9% coverage across all 2,306 statements)
-✅ Runtime Integration Complete (ARS-001 System Runtime & CLI operational)
-🚧 Pending Architectural Review (ARS-001 Implementation Pass)
+✅ Module Specifications Complete (ADS-001 through ADS-008 Approved/Frozen)
+✅ Implementation Complete (ADS-001 through ADS-007 Frozen, ARS-002 Implemented)
+✅ Testing Complete (278 tests, 100.0% coverage across all 2,490 statements)
+✅ Real Tool Integration Complete (ARS-002 Real Host Execution operational)
+🚧 Pending Architectural Audit (ARS-002 Real Tool Runtime Implementation)
 
 ---
 
 # Subsystem Metrics
 
-* **Engineering Decisions (EDRs):** 26 (7 blueprint, 19 implementation/architecture)
-* **Lines of Production Code:** 2,306 statements
-* **Total Unit Tests:** 266
-* **Subsystem Code Coverage:** 99.9% (100% across all core subsystems and runtime facade)
+* **Engineering Decisions (EDRs):** 27 (7 blueprint, 20 implementation/architecture)
+* **Lines of Production Code:** 2,490 statements
+* **Total Unit Tests:** 278
+* **Subsystem Code Coverage:** 100.0% (0 missed statements across entire repository)
 * **Technical Debt Introduced:** 0 (Known)
 
 

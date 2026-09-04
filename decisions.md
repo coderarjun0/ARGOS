@@ -963,6 +963,34 @@ Implement `argos.runtime` as a lightweight Composition Root, System Lifecycle Ma
 
 ---
 
+# EDR-027
+
+## Adopt Decoupled Tool Runtime Architecture with ActionExecutor Adapters
+
+**Date:** 3 September 2026
+
+### Context
+
+Transitioning ARGOS from simulated execution output to real host OS actions requires bridging frozen ADS-004 `ActionRouter` step invocations to real system capabilities without modifying frozen subsystem code, bypassing Layer 1 or Layer 2 policy gates, or introducing process vulnerabilities.
+
+### Decision
+
+Adopt a Decoupled, Policy-Governed Tool Runtime (`src/argos/tools/`):
+1. Define `ToolExecutorAdapter` as a concrete subclass of frozen `ActionExecutor`, preserving `execute(step: PlanStep) -> StepResult`.
+2. Implement `ApplicationLauncherTool` for `open_known_application("calculator")`.
+3. Encapsulate OS-specific process resolution (`calc.exe`) inside `Win32PlatformAdapter`.
+4. Enforce `shell=False`, parameter whitelisting, and detached GUI lifecycle semantics.
+5. Preserved the 6-scope policy hierarchy: CONSTITUTION > SYSTEM_IMMUTABLE > SYSTEM_SECURITY > USER_POLICY > CONTEXTUAL > DEFAULT_FALLBACK.
+
+### Consequences
+
+* **100% Frozen Contract Integrity**: Frozen `ActionRouter`, `ActionExecutor` (ABC), and `ExecutionEngine` remain 100% untouched while real OS capabilities are dispatched.
+* **Deterministic Security Boundary**: Raw shell expansion (`shell=True`) and arbitrary command arguments are strictly prohibited. Application targets resolve exclusively against trusted immutable platform mappings.
+* **Testability**: `MockPlatformAdapter` enables fast, deterministic test suites without launching real host processes.
+* **Granular Telemetry**: Captures PID metadata and structured status outputs.
+
+---
+
 # Founder's Pact
 
 **Date:** 26 June 2026

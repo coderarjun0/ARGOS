@@ -48,6 +48,14 @@ def test_runtime_construction_and_wiring():
     assert runtime.is_shutdown
 
 
+def test_runtime_non_win32_platform_default():
+    """Verifies default platform adapter creation on non-win32 platforms."""
+    with patch("sys.platform", "linux"):
+        runtime = ArgosRuntime.create_default(db_path=":memory:")
+        assert runtime.brain_core is not None
+        runtime.close()
+
+
 def test_runtime_single_request_open_app():
     """Verifies end-to-end execution of 'open calculator' returning SUCCESS."""
     with ArgosRuntime.create_default(db_path=":memory:") as runtime:

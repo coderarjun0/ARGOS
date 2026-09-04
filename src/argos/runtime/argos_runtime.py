@@ -57,14 +57,21 @@ class ArgosRuntime:
         self._is_shutdown = False
 
     @classmethod
-    def create_default(cls, db_path: str = ":memory:") -> "ArgosRuntime":
+    def create_default(
+        cls,
+        db_path: str = ":memory:",
+        platform_adapter: Any | None = None,
+        tool_registry: Any | None = None,
+    ) -> "ArgosRuntime":
         """Factory method constructing a default ArgosRuntime.
 
-        Instantiates SQLiteStore, MemoryEngine, PolicyEngine, CapabilityManager,
-        and BrainCore in proper dependency order.
+        Instantiates SQLiteStore, MemoryEngine, PolicyEngine, ToolRegistry,
+        ActionRouter, CapabilityManager, and BrainCore in proper dependency order.
 
         Args:
             db_path: Path to SQLite database file or ':memory:' for in-memory DB.
+            platform_adapter: Optional platform adapter (defaults to Win32 or Mock).
+            tool_registry: Optional ToolRegistry instance.
 
         Returns:
             A fully wired ArgosRuntime instance.
@@ -73,10 +80,42 @@ class ArgosRuntime:
             RuntimeInitializationError: If dependency construction fails.
         """
         try:
+            import sys
+
+            from argos.execution.execution_engine import ExecutionEngine
+            from argos.planning.action import Action
+            from argos.tools.adapters.mock_adapter import MockPlatformAdapter
+            from argos.tools.adapters.win32_adapter import Win32PlatformAdapter
+            from argos.tools.application_tool import ApplicationLauncherTool
+            from argos.tools.tool_executor_adapter import ToolExecutorAdapter
+            from argos.tools.tool_registry import ToolRegistry
+
             memory_engine = MemoryEngine(db_path=db_path)
             policy_engine = PolicyEngine(memory_engine=memory_engine)
 
+            # Determine platform adapter
+            if platform_adapter is None:
+                if sys.platform == "win32":
+                    platform_adapter = Win32PlatformAdapter()
+                else:
+                    platform_adapter = MockPlatformAdapter()
+
+            # Construct Tool Registry and register ApplicationLauncherTool
+            t_registry = tool_registry or ToolRegistry()
+            app_tool = ApplicationLauncherTool(platform_adapter=platform_adapter)
+            t_registry.register(app_tool)
+
+            # Build ActionRouter with default mappings and override OPEN_APP
+            router = ExecutionEngine()._build_default_router()
+            app_adapter = ToolExecutorAdapter(tool=app_tool)
+            router.register(Action.OPEN_APP, app_adapter)
+
+            execution_engine = ExecutionEngine(
+                router=router, policy_engine=policy_engine
+            )
+
             cap_mgr = create_default_capability_manager(
+                execution_engine=execution_engine,
                 memory_engine=memory_engine,
                 policy_engine=policy_engine,
             )
