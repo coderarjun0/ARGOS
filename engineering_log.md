@@ -656,27 +656,61 @@ Implement ARS-002 Real Capability & Tool Runtime (`src/argos/tools/`), bridging 
 
 ---
 
+# Session 18 — ADS-009 Capability Ecosystem & Domain Registry Specification Freeze
+
+**Date:** 4 September 2026
+
+## Objective
+
+Draft, refine, review, and freeze the Architecture Design Specification for ADS-009 Capability Ecosystem & Domain Registry (`specs/ADS-009-Capability-Ecosystem-Registry.md` v1.0 Approved & Frozen) for ARS-003, establish EDR-028 in `decisions.md`, and record the specification freeze baseline release (`v0.9.1-alpha`) without creating implementation code, modifying frozen specifications ADS-001 through ADS-008, or altering the ARGOS Constitution.
+
+## Completed
+
+* **ADS-009 Specification Creation & Freeze**: Created `specs/ADS-009-Capability-Ecosystem-Registry.md` (v1.0 Approved & Frozen) defining:
+  * **Dual Registry Architecture**: Strict separation between `CognitiveCapability` (BrainCore cognitive subsystem capability managed by `CapabilityManager`) and `CapabilityDomain` (tool ecosystem organizational/discovery metadata managed by `CapabilityRegistry`).
+  * **Single Source of Truth**: `ToolManifest` is the authoritative single source of truth for tool/action metadata and parameter schema contracts.
+  * **Canonical ParameterSpec Ownership**: Reused canonical `ParameterSpec` ownership in `src/argos/tools/base_tool.py`.
+  * **RiskClass Standardization**: Enforced `RiskClass` (`READ_ONLY`, `LOW_RISK`, `MEDIUM_RISK`, `HIGH_RISK`, `CRITICAL`) across tool manifests.
+  * **Composition Root Ownership & Read-Only Lifecycle**: `CapabilityRegistry` is constructed and owned exclusively by `ArgosRuntime` (Composition Root) and remains read-only post-initialization.
+  * **Deterministic Action Resolution**: Action-to-tool resolution maps deterministically; duplicate tool actions raise `AmbiguousActionError`.
+  * **No Dynamic Loading**: Explicitly prohibited string module imports, auto-discovery reflection, or dynamic file scanning.
+  * **Reserved Parameter & Security Rules**: `_risk_class` is defined as an internal policy parameter, prohibited in user/LLM schemas. `sandbox_root` ownership enforces canonical path containment and symlink safety.
+* **Engineering Decision Record**: Documented `EDR-028` in `decisions.md`.
+* **Verification & Checks**:
+  * `py -m ruff check .` clean with 0 errors.
+  * `py -m pytest --cov=argos --cov-report=term-missing` clean with 278 passed tests and 100.0% coverage across 2,490 statements.
+  * Zero implementation code modified or added in `src/`.
+* **Baseline Freeze Tag**: Committed documentation baseline with message `docs(architecture): freeze ADS-009 capability ecosystem registry` and created annotated release tag `v0.9.1-alpha`.
+
+## Architectural Lessons Learned
+
+* **Dual Registry Boundary Protection**: Decoupling cognitive management (`CapabilityManager`) from tool ecosystem discovery (`CapabilityRegistry`) protects the core reasoning loop while allowing rich, domain-organized tool ecosystems.
+* **Metadata Schema Integrity**: Enforcing `ToolManifest` as the single source of truth for parameter schemas and risk metadata eliminates schema drift between discovery registries, policy gates, and execution engines.
+
+---
+
 # Current Status
 
 Current Phase:
 
 ✅ Foundation Complete
 ✅ Architecture Phase Complete
-✅ Module Specifications Complete (ADS-001 through ADS-008 Approved/Frozen)
-✅ Implementation Complete (ADS-001 through ADS-007 Frozen, ARS-002 Implemented)
+✅ Module Specifications Complete (ADS-001 through ADS-009 Approved/Frozen)
+✅ ARS-002 Implementation Complete (ADS-001 through ADS-007 Frozen, ARS-002 v0.9.0-alpha Frozen)
+✅ ADS-009 Specification Baseline Frozen (v0.9.1-alpha)
 ✅ Testing Complete (278 tests, 100.0% coverage across all 2,490 statements)
-✅ Real Tool Integration Complete (ARS-002 Real Host Execution operational)
-🚧 Pending Architectural Audit (ARS-002 Real Tool Runtime Implementation)
+🚧 Pending ARS-003 Capability Expansion Implementation
 
 ---
 
 # Subsystem Metrics
 
-* **Engineering Decisions (EDRs):** 27 (7 blueprint, 20 implementation/architecture)
+* **Engineering Decisions (EDRs):** 28 (7 blueprint, 21 implementation/architecture)
 * **Lines of Production Code:** 2,490 statements
 * **Total Unit Tests:** 278
 * **Subsystem Code Coverage:** 100.0% (0 missed statements across entire repository)
 * **Technical Debt Introduced:** 0 (Known)
+
 
 
 

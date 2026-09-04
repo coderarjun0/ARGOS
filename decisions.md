@@ -991,6 +991,39 @@ Adopt a Decoupled, Policy-Governed Tool Runtime (`src/argos/tools/`):
 
 ---
 
+# EDR-028
+
+## Adopt Dual Registry Architecture for Capability Domain Ecosystem
+
+**Date:** 4 September 2026
+
+### Context
+
+Transitioning ARGOS to ARS-003 requires expanding tool capabilities and organizing tools into discoverable Capability Domains without confusing cognitive capabilities (`CognitiveCapability` in frozen ADS-005) with tool capability domains (`CapabilityDomain`). Furthermore, tool metadata, parameters, risk classifications, composition root ownership, dynamic loading restrictions, security parameter protection, and path containment rules must be formally defined in an authoritative specification (`ADS-009`) prior to implementation.
+
+### Decision
+
+Adopt a Dual Registry Architecture and Freeze `ADS-009`:
+1. **Separation of Domains**: Maintain strict separation between `CognitiveCapability` (BrainCore subsystem capability managed by `CapabilityManager`) and `CapabilityDomain` (tool ecosystem organizational metadata managed by `CapabilityRegistry`).
+2. **Single Source of Truth**: `ToolManifest` is the authoritative single source of truth for tool/action metadata and parameter contracts. `CapabilityRegistry` indexes this metadata and exposes it without parameter schema duplication or drift.
+3. **Canonical ParameterSpec Ownership**: Standardize canonical `ParameterSpec` ownership in `src/argos/tools/base_tool.py`.
+4. **RiskClass Standardization**: Enforce `RiskClass` (`READ_ONLY`, `LOW_RISK`, `MEDIUM_RISK`, `HIGH_RISK`, `CRITICAL`) across all tool manifests.
+5. **Composition Root Ownership**: `CapabilityRegistry` is constructed and owned exclusively by `ArgosRuntime` (Composition Root) and passed as read-only via dependency injection.
+6. **Post-Freeze Read-Only Lifecycle**: Once initialized and frozen at runtime startup, `CapabilityRegistry` is immutable and thread-safe.
+7. **Deterministic Discovery & AmbiguousActionError**: Tool lookup maps action names deterministically; matching multiple tools raises `AmbiguousActionError`.
+8. **Decoupled Architecture**: `CapabilityRegistry` has zero dependence on `PolicyEngine` or `ActionRouter`.
+9. **No Dynamic Auto-Scanning**: Prohibit runtime string imports, auto-discovery reflection, or dynamic file scanning.
+10. **Reserved `_risk_class` Protection**: `_risk_class` is an internal policy bridge parameter, prohibited in user/LLM input schema.
+11. **Sandbox Path Containment**: Tools accepting `sandbox_root` must enforce canonical path resolution, symlink traversal prevention, and directory containment.
+
+### Consequences
+
+* **Architectural Clarity**: Precludes confusion between cognitive subsystem capabilities and tool discovery metadata.
+* **Deterministic Security Boundary**: Prevents parameter schema drift, risk escalation, and unauthorized path traversal.
+* **Prepared for Implementation**: Provides an authoritative, frozen specification baseline (`ADS-009`) for ARS-003 implementation phase.
+
+---
+
 # Founder's Pact
 
 **Date:** 26 June 2026
