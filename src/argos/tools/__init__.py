@@ -4,7 +4,14 @@ Provides real, policy-governed tool contracts, adapters, and registries.
 """
 
 from argos.tools.application_tool import ApplicationLauncherTool
-from argos.tools.base_tool import BaseTool, SideEffectClass, ToolManifest, ToolResult
+from argos.tools.base_tool import (
+    BaseTool,
+    ParameterSpec,
+    RiskClass,
+    SideEffectClass,
+    ToolManifest,
+    ToolResult,
+)
 from argos.tools.exceptions import (
     InvalidParameterError,
     PlatformExecutionError,
@@ -19,7 +26,9 @@ __all__ = [
     "ApplicationLauncherTool",
     "BaseTool",
     "InvalidParameterError",
+    "ParameterSpec",
     "PlatformExecutionError",
+    "RiskClass",
     "SideEffectClass",
     "ToolError",
     "ToolExecutorAdapter",

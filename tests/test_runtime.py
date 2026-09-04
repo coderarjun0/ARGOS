@@ -43,6 +43,10 @@ def test_runtime_construction_and_wiring():
     assert runtime.brain_core is not None
     assert runtime.memory_engine is not None
     assert runtime.policy_engine is not None
+    assert runtime.capability_registry is not None
+    assert runtime.capability_registry.is_frozen
+    assert len(runtime.capability_registry.list_domains()) == 4
+    assert len(runtime.capability_registry.list_tools()) == 1
     assert not runtime.is_shutdown
     runtime.close()
     assert runtime.is_shutdown

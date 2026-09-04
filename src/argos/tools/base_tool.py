@@ -17,6 +17,28 @@ class SideEffectClass(StrEnum):
     MUTATING_IRREVERSIBLE = "mutating_irreversible"
 
 
+class RiskClass(StrEnum):
+    """Enumeration of operational risk classifications for tool manifests."""
+
+    READ_ONLY = "read_only"
+    LOCAL_MUTATION_REVERSIBLE = "local_mutation_reversible"
+    LOCAL_MUTATION_IRREVERSIBLE = "local_mutation_irreversible"
+    NETWORK_READ = "network_read"
+    EXTERNAL_MUTATION = "external_mutation"
+    DESTRUCTIVE_PRIVILEGED = "destructive_privileged"
+
+
+@dataclass(frozen=True, slots=True)
+class ParameterSpec:
+    """Specification contract for a tool parameter."""
+
+    name: str
+    param_type: type
+    required: bool = True
+    default: Any = None
+    allowed_values: tuple[Any, ...] | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class ToolManifest:
     """Declarative manifest describing a real system tool's properties.
@@ -29,6 +51,8 @@ class ToolManifest:
         side_effect: Side-effect classification rating.
         is_reversible: True if a compensating inverse action exists.
         default_timeout_seconds: Hard execution timeout boundary.
+        risk_class: Operational risk classification rating.
+        parameter_specs: Tuple of parameter specification contracts.
     """
 
     tool_id: str
@@ -38,6 +62,9 @@ class ToolManifest:
     side_effect: SideEffectClass = SideEffectClass.READ_ONLY
     is_reversible: bool = False
     default_timeout_seconds: float = 5.0
+    risk_class: RiskClass = RiskClass.READ_ONLY
+    parameter_specs: tuple[ParameterSpec, ...] = ()
+
 
 
 @dataclass(slots=True)

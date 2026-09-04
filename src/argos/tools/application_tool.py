@@ -7,7 +7,14 @@ via injected platform OS adapters.
 from typing import Any
 
 from argos.tools.adapters.base_platform import BasePlatformAdapter
-from argos.tools.base_tool import BaseTool, SideEffectClass, ToolManifest, ToolResult
+from argos.tools.base_tool import (
+    BaseTool,
+    ParameterSpec,
+    RiskClass,
+    SideEffectClass,
+    ToolManifest,
+    ToolResult,
+)
 from argos.tools.exceptions import InvalidParameterError, PlatformExecutionError
 
 
@@ -31,6 +38,15 @@ class ApplicationLauncherTool(BaseTool):
             side_effect=SideEffectClass.MUTATING_REVERSIBLE,
             is_reversible=True,
             default_timeout_seconds=5.0,
+            risk_class=RiskClass.LOCAL_MUTATION_REVERSIBLE,
+            parameter_specs=(
+                ParameterSpec(
+                    name="application",
+                    param_type=str,
+                    required=True,
+                    allowed_values=self.APPROVED_APPLICATIONS,
+                ),
+            ),
         )
 
     @property

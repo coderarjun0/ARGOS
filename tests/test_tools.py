@@ -24,7 +24,12 @@ from argos.runtime.models import RuntimeStatus
 from argos.tools.adapters.mock_adapter import MockPlatformAdapter
 from argos.tools.adapters.win32_adapter import Win32PlatformAdapter
 from argos.tools.application_tool import ApplicationLauncherTool
-from argos.tools.base_tool import SideEffectClass, ToolManifest, ToolResult
+from argos.tools.base_tool import (
+    RiskClass,
+    SideEffectClass,
+    ToolManifest,
+    ToolResult,
+)
 from argos.tools.exceptions import (
     InvalidParameterError,
     PlatformExecutionError,
@@ -48,6 +53,8 @@ def test_tool_manifest_defaults():
     assert manifest.side_effect == SideEffectClass.READ_ONLY
     assert manifest.is_reversible is False
     assert manifest.default_timeout_seconds == 5.0
+    assert manifest.risk_class == RiskClass.READ_ONLY
+    assert manifest.parameter_specs == ()
 
 
 def test_tool_result_defaults():

@@ -43,6 +43,7 @@ class ArgosRuntime:
         brain_core: BrainCore,
         memory_engine: MemoryEngine | None = None,
         policy_engine: PolicyEngine | None = None,
+        capability_registry: Any | None = None,
     ) -> None:
         """Initializes ArgosRuntime with provided or injected dependencies.
 
@@ -50,10 +51,12 @@ class ArgosRuntime:
             brain_core: Primary BrainCore instance for cognitive loop execution.
             memory_engine: Optional MemoryEngine instance.
             policy_engine: Optional PolicyEngine instance.
+            capability_registry: Optional CapabilityRegistry instance.
         """
         self._brain_core = brain_core
         self._memory_engine = memory_engine
         self._policy_engine = policy_engine
+        self._capability_registry = capability_registry
         self._is_shutdown = False
 
     @classmethod
@@ -62,16 +65,19 @@ class ArgosRuntime:
         db_path: str = ":memory:",
         platform_adapter: Any | None = None,
         tool_registry: Any | None = None,
+        capability_registry: Any | None = None,
     ) -> "ArgosRuntime":
         """Factory method constructing a default ArgosRuntime.
 
         Instantiates SQLiteStore, MemoryEngine, PolicyEngine, ToolRegistry,
-        ActionRouter, CapabilityManager, and BrainCore in proper dependency order.
+        CapabilityRegistry, ActionRouter, CapabilityManager, and BrainCore in
+        proper dependency order.
 
         Args:
             db_path: Path to SQLite database file or ':memory:' for in-memory DB.
             platform_adapter: Optional platform adapter (defaults to Win32 or Mock).
             tool_registry: Optional ToolRegistry instance.
+            capability_registry: Optional CapabilityRegistry instance.
 
         Returns:
             A fully wired ArgosRuntime instance.
@@ -82,6 +88,15 @@ class ArgosRuntime:
         try:
             import sys
 
+            from argos.capabilities.capability_registry import CapabilityRegistry
+            from argos.capabilities.domains.application_domain import ApplicationDomain
+            from argos.capabilities.domains.file_system_domain import (
+                FileSystemDomain,
+            )
+            from argos.capabilities.domains.system_info_domain import (
+                SystemInfoDomain,
+            )
+            from argos.capabilities.domains.web_domain import WebDomain
             from argos.execution.execution_engine import ExecutionEngine
             from argos.planning.action import Action
             from argos.tools.adapters.mock_adapter import MockPlatformAdapter
@@ -103,7 +118,20 @@ class ArgosRuntime:
             # Construct Tool Registry and register ApplicationLauncherTool
             t_registry = tool_registry or ToolRegistry()
             app_tool = ApplicationLauncherTool(platform_adapter=platform_adapter)
-            t_registry.register(app_tool)
+            existing_tool_ids = [t.manifest.tool_id for t in t_registry.list_tools()]
+            if app_tool.manifest.tool_id not in existing_tool_ids:
+                t_registry.register(app_tool)
+
+            # Construct and populate CapabilityRegistry
+            c_registry = capability_registry or CapabilityRegistry()
+            if not c_registry.is_frozen:
+                c_registry.register_domain(ApplicationDomain())
+                c_registry.register_domain(FileSystemDomain())
+                c_registry.register_domain(SystemInfoDomain())
+                c_registry.register_domain(WebDomain())
+                for tool in t_registry.list_tools():
+                    c_registry.index_tool(tool)
+                c_registry.freeze()
 
             # Build ActionRouter with default mappings and override OPEN_APP
             router = ExecutionEngine()._build_default_router()
@@ -125,6 +153,7 @@ class ArgosRuntime:
                 brain_core=brain_core,
                 memory_engine=memory_engine,
                 policy_engine=policy_engine,
+                capability_registry=c_registry,
             )
         except Exception as err:
             raise RuntimeInitializationError(
@@ -145,6 +174,11 @@ class ArgosRuntime:
     def policy_engine(self) -> PolicyEngine | None:
         """Provides access to the underlying PolicyEngine instance."""
         return self._policy_engine
+
+    @property
+    def capability_registry(self) -> Any | None:
+        """Provides access to the underlying CapabilityRegistry instance."""
+        return self._capability_registry
 
     @property
     def is_shutdown(self) -> bool:

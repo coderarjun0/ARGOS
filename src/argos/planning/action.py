@@ -23,3 +23,8 @@ class Action(StrEnum):
     SEARCH_WEB = "search_web"
     RUN_COMMAND = "run_command"
     ASK_CLARIFICATION = "ask_clarification"
+
+    # ADS-009 Extensions
+    LIST_DIR = "list_dir"
+    QUERY_SYS_INFO = "query_sys_info"
+
