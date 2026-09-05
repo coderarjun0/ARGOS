@@ -1024,6 +1024,35 @@ Adopt a Dual Registry Architecture and Freeze `ADS-009`:
 
 ---
 
+# EDR-029
+
+## Adopt Schema-Aware Task Planning & Strategy Engine Architecture
+
+**Date:** 4 September 2026
+
+### Context
+
+Following the freeze and implementation of `ADS-009 Capability Ecosystem & Domain Registry` (ARS-003 `v0.10.0-alpha`), tool discovery schemas (`ActionSchemaDescriptor`), parameter specs (`ParameterSpec`), and operational risk classes (`RiskClass`) are exposed via `CapabilityRegistry`. However, `Planner` (`src/argos/planning/planner.py`) currently relies on static heuristic strategies that do not query `CapabilityRegistry` or validate parameters against schema contracts. Formalizing `ADS-003 — Task Planning Subsystem & Schema-Aware Strategy Engine` is required prior to ARS-004 implementation.
+
+### Decision
+
+Adopt Schema-Aware Task Planning Architecture and Freeze `ADS-003`:
+1. **Constructor Dependency Injection**: Inject `CapabilityRegistry` into `Planner` via explicit constructor injection (`Planner.__init__(capability_registry=...)`), preserving Composition Root ownership and testability without Service Locator patterns or global state.
+2. **Untrusted Proposal Boundary**: `Planner` acts strictly as an untrusted proposal generator. `Planner` has zero execution authority, cannot evaluate policies, cannot access `BaseTool` instances or platform adapters, and cannot bypass `PolicyEngine`.
+3. **Canonical Parameter Validation**: Encapsulate parameter validation in `SchemaValidator`, validating intent entities against canonical `ParameterSpec` contracts (`src/argos/tools/base_tool.py`).
+4. **Deterministic Parameter Defaults**: Inject `ParameterSpec.default` when optional parameters are omitted; emit `Action.ASK_CLARIFICATION` when required parameters are missing or constraints fail.
+5. **Reserved Parameter Protection**: Prohibit and reject `_risk_class` or any `_`-prefixed internal parameter keys in planning input.
+6. **Ambiguity Resolution**: When multiple tools advertise the same action, `Planner` resolves explicitly via intent entities or emits `Action.ASK_CLARIFICATION` with candidate tool IDs. It NEVER selects an arbitrary tool silently.
+7. **Informational Risk Ratings**: Treat `RiskClass` on `ActionSchemaDescriptor` as informational metadata only. `PolicyEngine` remains the sole policy decision authority.
+
+### Consequences
+
+* **Architectural Completeness**: Completes the core ADS specification series (`ADS-001` through `ADS-009`).
+* **Schema Integrity**: Prevents malformed plan steps from reaching downstream policy gates or execution engines.
+* **Prepared for Implementation**: Establishes an authoritative, frozen specification baseline (`ADS-003`) for ARS-004 implementation phase.
+
+---
+
 # Founder's Pact
 
 **Date:** 26 June 2026

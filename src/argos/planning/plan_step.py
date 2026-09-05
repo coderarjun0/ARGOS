@@ -18,8 +18,11 @@ class PlanStep:
         step_id: Unique sequence identifier for the step (1-indexed).
         action: The atomic action to be performed.
         parameters: Configuration key-value parameters required for the action.
+        metadata: Diagnostic and telemetry context key-value pairs.
     """
 
     step_id: int
     action: Action
     parameters: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+

@@ -3,7 +3,10 @@
 This module integrates strategies, thresholds, and container mappings.
 """
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 from argos.intent.intent_result import IntentResult
 from argos.planning.constants import (
@@ -15,9 +18,17 @@ from argos.planning.exceptions import (
     InvalidIntentResultError,
     PlanningError,
     ProcessingError,
+    UnsupportedActionError,
 )
 from argos.planning.plan import Plan
-from argos.planning.strategy import DefaultStrategy, FallbackStrategy, Strategy
+from argos.planning.strategy import (
+    DefaultStrategy,
+    FallbackStrategy,
+    Strategy,
+)
+
+if TYPE_CHECKING:
+    from argos.capabilities.capability_registry import CapabilityRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -30,17 +41,36 @@ class Planner:
 
     def __init__(
         self,
+        capability_registry: CapabilityRegistry | None = None,
         default_strategy: Strategy | None = None,
         fallback_strategy: Strategy | None = None,
     ) -> None:
-        """Initializes the Planner with optional injected strategies.
+        """Initializes the Planner with optional capability registry and strategies.
 
         Args:
+            capability_registry: Optional read-only CapabilityRegistry instance.
             default_strategy: Optional custom Strategy for standard intent paths.
             fallback_strategy: Optional custom Strategy for fallback paths.
         """
-        self._default_strategy = default_strategy or DefaultStrategy()
+        self._capability_registry = capability_registry
+
+        if default_strategy is not None:
+            self._default_strategy = default_strategy
+        elif capability_registry is not None:
+            from argos.planning.strategy import DomainPlannerStrategy
+
+            self._default_strategy = DomainPlannerStrategy(capability_registry)
+        else:
+            self._default_strategy = DefaultStrategy()
+
+
         self._fallback_strategy = fallback_strategy or FallbackStrategy()
+
+
+    @property
+    def capability_registry(self) -> CapabilityRegistry | None:
+        """Returns the injected CapabilityRegistry instance."""
+        return self._capability_registry
 
     def plan(self, intent_result: IntentResult) -> Plan:
         """Generates an ordered Plan sequence from a semantic IntentResult.
@@ -95,8 +125,17 @@ class Planner:
                 else:
                     requires_confirmation = False
 
-            # 3. Build plan steps
-            steps = strategy.build_steps(intent_result)
+            # 3. Build plan steps with unsupported action fallback handling
+            try:
+                steps = strategy.build_steps(intent_result)
+            except UnsupportedActionError as err:
+                logger.info(
+                    "Unsupported action (%s), delegating to fallback strategy",
+                    err,
+                )
+                steps = self._fallback_strategy.build_steps(intent_result)
+
+
             logger.info("Plan steps generation completed successfully")
 
             # 4. Construct output DTO
@@ -127,3 +166,4 @@ class Planner:
             raise ProcessingError(
                 f"An unexpected error occurred during plan generation: {e}"
             ) from e
+

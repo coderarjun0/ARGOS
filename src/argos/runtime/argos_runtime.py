@@ -142,12 +142,18 @@ class ArgosRuntime:
                 router=router, policy_engine=policy_engine
             )
 
+            from argos.planning.planner import Planner
+
+            planner = Planner(capability_registry=c_registry)
+
             cap_mgr = create_default_capability_manager(
+                planner=planner,
                 execution_engine=execution_engine,
                 memory_engine=memory_engine,
                 policy_engine=policy_engine,
             )
             brain_core = BrainCore(capability_manager=cap_mgr)
+
 
             return cls(
                 brain_core=brain_core,

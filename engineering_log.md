@@ -689,27 +689,60 @@ Draft, refine, review, and freeze the Architecture Design Specification for ADS-
 
 ---
 
+# Session 19 — ADS-003 Task Planning Subsystem & Schema-Aware Strategy Engine Specification Freeze
+
+**Date:** 4 September 2026
+
+## Objective
+
+Draft, refine, review, and freeze the Architecture Design Specification for ADS-003 Task Planning Subsystem & Schema-Aware Strategy Engine (`specs/ADS-003-Task-Planning-System.md` v1.0 Approved & Frozen) for ARS-004 following the completion of ARS-003 (`v0.10.0-alpha`), establish EDR-029 in `decisions.md`, update engineering log, and verify repository baseline integrity without creating implementation code in `src/`, modifying frozen specifications (ADS-001 through ADS-009), or altering the ARGOS Constitution.
+
+## Completed
+
+* **ARS-003 Implementation Completion**: Successfully implemented ARS-003 Capability Ecosystem & Domain Registry (tagged `v0.10.0-alpha`, commit `fd3bf56`), creating `src/argos/capabilities/`, implementing 4 domain descriptors (`ApplicationDomain`, `FileSystemDomain`, `SystemInfoDomain`, `WebSearchDomain`), bringing total test suite to 287 passing tests and 100.0% coverage across 2,684 statements.
+* **ADS-003 Specification Creation & Freeze**: Created `specs/ADS-003-Task-Planning-System.md` (v1.0 Approved & Frozen) defining:
+  * **Constructor Dependency Injection**: Injected read-only `CapabilityRegistry` into `Planner` via constructor injection (`Planner.__init__(capability_registry=...)`).
+  * **Untrusted Proposal Boundary**: `Planner` acts strictly as an untrusted proposal generator with zero execution authority, unable to execute actions, evaluate policies, or bypass `PolicyEngine`.
+  * **Canonical Schema Validation**: `SchemaValidator` validates parameters against canonical `ParameterSpec` contracts (`src/argos/tools/base_tool.py`).
+  * **Deterministic Ambiguity Resolution**: Resolves ambiguous tool matches explicitly or emits `Action.ASK_CLARIFICATION` for missing required parameters, type/constraint invalidity, or ambiguous action resolution.
+  * **Reserved Parameter Security**: Strictly prohibits `_risk_class` and any `_`-prefixed internal parameter keys in planning input schemas.
+  * **Informational Risk Metrics**: `RiskClass` on `ActionSchemaDescriptor` is exposed strictly as informational metadata to `Planner`; `PolicyEngine` remains the sole policy decision authority.
+* **Engineering Decision Record**: Documented `EDR-029` in `decisions.md`.
+* **Verification & Checks**:
+  * `py -m ruff check .` clean with 0 errors.
+  * `py -m pytest --cov=argos --cov-report=term-missing` clean with 287 passed tests and 100.0% coverage across 2,684 statements.
+  * Zero source code modified or added in `src/` or `tests/` during specification freeze.
+
+## Architectural Lessons Learned
+
+* **Untrusted Planner Isolation**: Keeping the planner strictly schema-aware without granting it direct access to executable tool instances or execution authority ensures that intent generation can never bypass policy evaluation or system constraints.
+* **Canonical Parameter Schema Reuse**: Direct reuse of `ParameterSpec` from `BaseTool` manifests across discovery (`CapabilityRegistry`), planning validation (`SchemaValidator`), and execution eliminates schema duplication and drift across all subsystems.
+
+---
+
 # Current Status
 
 Current Phase:
 
 ✅ Foundation Complete
 ✅ Architecture Phase Complete
-✅ Module Specifications Complete (ADS-001 through ADS-009 Approved/Frozen)
-✅ ARS-002 Implementation Complete (ADS-001 through ADS-007 Frozen, ARS-002 v0.9.0-alpha Frozen)
-✅ ADS-009 Specification Baseline Frozen (v0.9.1-alpha)
-✅ Testing Complete (278 tests, 100.0% coverage across all 2,490 statements)
-🚧 Pending ARS-003 Capability Expansion Implementation
+✅ Module Specifications Complete (ADS-001 through ADS-009 & ADS-003 Approved/Frozen)
+✅ ARS-002 Implementation Complete (v0.9.0-alpha)
+✅ ADS-009 & ARS-003 Capability Ecosystem Implementation Complete (v0.10.0-alpha)
+✅ ADS-003 Specification Baseline Frozen (v1.0 Approved & Frozen)
+✅ Testing Complete (287 tests, 100.0% coverage across all 2,684 statements)
+🚧 Pending ARS-004 Task Planning Subsystem & Schema-Aware Strategy Engine Implementation
 
 ---
 
 # Subsystem Metrics
 
-* **Engineering Decisions (EDRs):** 28 (7 blueprint, 21 implementation/architecture)
-* **Lines of Production Code:** 2,490 statements
-* **Total Unit Tests:** 278
+* **Engineering Decisions (EDRs):** 29 (7 blueprint, 22 implementation/architecture)
+* **Lines of Production Code:** 2,684 statements
+* **Total Unit Tests:** 287
 * **Subsystem Code Coverage:** 100.0% (0 missed statements across entire repository)
 * **Technical Debt Introduced:** 0 (Known)
+
 
 
 
